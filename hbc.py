@@ -29,7 +29,7 @@ class HBC:
                  options: List,
                  option_dim,
                  device,
-                 vec_env        
+                 vec_env
                  ):
         self.expert_demos = expert_demos
         self.options = options
@@ -61,19 +61,21 @@ class HBC:
     
     def train(self, n_epochs):
         for epoch in range(n_epochs):
-            options = [np.insert(o, 0, -1).reshape(-1, 1) for o in self.options]
-            # options = self.viterbi_list(self.expert_demos)
+            # options = [np.insert(o, 0, -1).reshape(-1, 1) for o in self.options]
+            options = self.viterbi_list(self.expert_demos)
             transitions_lo, transitions_hi = self.get_h_transitions(self.expert_demos, options)
             self.policy_lo.set_demonstrations(transitions_lo)
             self.policy_hi.set_demonstrations(transitions_hi)
             self.policy_lo.train(n_epochs=30)
             self.policy_hi.train(n_epochs=30)
 
-            f = lambda x: np.linalg.norm(options[x].squeeze()[1:] - self.options[x], 1)
+            f = lambda x: np.linalg.norm(
+                (options[x].squeeze()[1:] - self.options[x]), 1)/len(self.options[x])
             distances = list(map(f, range(len(options))))
             self._logger.record("hbc/outer_epoch", epoch)
             self._logger.record("hbc/0-1distance", np.mean(distances))
-
+            self._logger.record("hbc/mean_return", evaluate_policy(hbc, env, 10)[0])
+            self._logger.record("hbc/std_return", evaluate_policy(hbc, env, 10)[1])
             
             np.linalg.norm((options[0].squeeze()[1:] - self.options[0]), 1)    
 
