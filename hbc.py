@@ -29,7 +29,8 @@ class HBC:
                  options: List,
                  option_dim,
                  device,
-                 vec_env
+                 vec_env,
+                 exp_identifier=None
                  ):
         self.expert_demos = expert_demos
         self.options = options
@@ -38,7 +39,11 @@ class HBC:
         action_dim = 4
         rng = np.random.default_rng(0)
 
-        logging_dir = os.path.join(CURR_DIR, f'results/hbc_{timestamp()}/')
+        if exp_identifier is not None:
+            logging_dir = os.path.join(CURR_DIR, f'results/{exp_identifier}_{timestamp()}/')
+        else:
+            logging_dir = os.path.join(CURR_DIR, f'results/hbc_{timestamp()}/')
+
         new_logger = imit_logger.configure(logging_dir, ["stdout", "csv", "tensorboard"])
 
         obs_space = vec_env.observation_space
@@ -211,7 +216,7 @@ rollouts2 = get_expert_trajectories(env_name, 500, True)
 rollouts = filter_intent_TrajsWRewards(rollouts2)
 options = [rollout.obs[:,-1] for rollout in rollouts2]
 
-hbc = HBC(rollouts, options, 2, 'cpu', env)
+hbc = HBC(rollouts, options, 2, 'cpu', env, exp_identifier=None)
 # reward_before, std_before = evaluate_policy(hbc, env, 10)
 # hbc.train(200)
 # print("Reward:", reward)
