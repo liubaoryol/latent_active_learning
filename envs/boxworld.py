@@ -78,27 +78,41 @@ class BoxWorldEnv(gym.Env):
     def _is_occupied(self, location):
         return (self._occupied_grids==location).all(axis=1).any()
 
-    def reset(self, seed=None, options=None):
+    def reset(self, seed=None, targets=None):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
         self.at_absorb_state = False
 
+        self._occupied_grids = np.empty((self.n_targets + 1, 2), dtype=np.float32)
         self._elapsed_steps = 0
         self._visited_goals = []
         self._curr_goal = self.sample_next_goal()
+
+        if targets is not None:
+            assert len(targets)==self.n_targets, \
+            'Number of targets should be {}, but {} were given'.format(
+                self.n_targets, len(targets))
+            self._occupied_grids[1:] = targets
+            
+        else:
+            # We will sample the target's location randomly until it does not coincide with the agent's location
+            for element in range(1, self.n_targets+1):
+                target_location = self._occupied_grids[0]
+                while self._is_occupied(target_location):
+                    target_location = self.np_random.integers(
+                        0, self.size, size=2, dtype=int
+                    )
+                self._occupied_grids[element] = target_location
+        
+
         # Choose the agent's location uniformly at random
         agent_location = self.np_random.integers(0, self.size, size=2, dtype=int)
+        while self._is_occupied(agent_location):
+            agent_location = self.np_random.integers(0, self.size, size=2, dtype=int)
 
         self._occupied_grids[0] = agent_location
-        # We will sample the target's location randomly until it does not coincide with the agent's location
-        for element in range(1, self.n_targets+1):
-            target_location = agent_location
-            while self._is_occupied(target_location):
-                target_location = self.np_random.integers(
-                    0, self.size, size=2, dtype=int
-                )
-            self._occupied_grids[element] = target_location
+
 
         observation = self._get_obs()
         info = {}
