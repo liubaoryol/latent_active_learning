@@ -3,6 +3,11 @@ import gymnasium as gym
 from stable_baselines3.common.evaluation import evaluate_policy
 from gymnasium import spaces
 from typing import List, Union, Tuple, Dict, Optional
+import torch
+import imitation
+import dataclasses
+import os
+from datetime import datetime
 
 import latent_active_learning
 from latent_active_learning.collect import get_expert_trajectories, get_environment, filter_intent_TrajsWRewards
@@ -13,7 +18,10 @@ from imitation.data.wrappers import RolloutInfoWrapper
 from imitation.policies.serialize import load_policy
 from imitation.util.util import make_vec_env
 from stable_baselines3.common.utils import obs_as_tensor
+from imitation.util import logger as imit_logger
 
+CURR_DIR = "/home/liubove/Documents/my-packages/latent_active_learning/"
+timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
 class HBC:
     def __init__(self,
@@ -21,7 +29,7 @@ class HBC:
                  options: List,
                  option_dim,
                  device,
-                 vec_env                 
+                 vec_env        
                  ):
         self.expert_demos = expert_demos
         self.options = options
@@ -30,29 +38,44 @@ class HBC:
         action_dim = 4
         rng = np.random.default_rng(0)
 
+        logging_dir = os.path.join(CURR_DIR, f'results/hbc_{timestamp()}/')
+        new_logger = imit_logger.configure(logging_dir, ["stdout", "csv", "tensorboard"])
+
         obs_space = vec_env.observation_space
         new_lo = np.concatenate([obs_space.low, [0]])
         new_hi = np.concatenate([obs_space.high, [option_dim]])
         self.policy_lo = bc.BC(
             observation_space=spaces.Box(low=new_lo, high=new_hi),
             action_space=vec_env.action_space, # Check as sometimes it's continuosu
-            rng=rng
+            rng=rng,
+            device=device,
+            custom_logger=new_logger
         )
         self.policy_hi = bc.BC(
             observation_space=spaces.Box(low=new_lo, high=new_hi),
             action_space=spaces.Discrete(option_dim),
-            rng=rng
+            rng=rng,
+            device=device
         )
+        self._logger = self.policy_lo._logger
     
     def train(self, n_epochs):
         for epoch in range(n_epochs):
-            options = self.viterbi_list(self.expert_demos)
+            options = [np.insert(o, 0, -1).reshape(-1, 1) for o in self.options]
+            # options = self.viterbi_list(self.expert_demos)
             transitions_lo, transitions_hi = self.get_h_transitions(self.expert_demos, options)
             self.policy_lo.set_demonstrations(transitions_lo)
             self.policy_hi.set_demonstrations(transitions_hi)
             self.policy_lo.train(n_epochs=30)
             self.policy_hi.train(n_epochs=30)
 
+            f = lambda x: np.linalg.norm(options[x].squeeze()[1:] - self.options[x], 1)
+            distances = list(map(f, range(len(options))))
+            self._logger.record("hbc/outer_epoch", epoch)
+            self._logger.record("hbc/0-1distance", np.mean(distances))
+
+            
+            np.linalg.norm((options[0].squeeze()[1:] - self.options[0]), 1)    
 
     def get_h_transitions(self, expert_demos, options):
         expert_lo = []
@@ -172,9 +195,9 @@ class HBC:
             n = len(observation)
             state = -np.ones(n)
         state[episode_start] = -1
-        hi_input = obs_as_tensor(np.concatenate([observation, state.reshape(-1, 1)], axis=1), device='cpu')
+        hi_input = obs_as_tensor(np.concatenate([observation, state.reshape(-1, 1)], axis=1), device=self.device)
         state, _ = self.policy_hi.policy.predict(hi_input)
-        lo_input = obs_as_tensor(np.concatenate([observation, state.reshape(-1, 1)], axis=1), device='cpu')
+        lo_input = obs_as_tensor(np.concatenate([observation, state.reshape(-1, 1)], axis=1), device=self.device)
         actions, _ = self.policy_lo.policy.predict(lo_input)
         return actions, state
 
@@ -182,11 +205,11 @@ class HBC:
 
 env_name = "BoxWorld-v0"
 env = get_environment(env_name, False)
-rollouts2 = get_expert_trajectories(env_name, 500, True, SEED)
+rollouts2 = get_expert_trajectories(env_name, 500, True)
 rollouts = filter_intent_TrajsWRewards(rollouts2)
 options = [rollout.obs[:,-1] for rollout in rollouts2]
 
 hbc = HBC(rollouts, options, 2, 'cpu', env)
-reward_before, std_before = evaluate_policy(hbc, env, 10)
-hbc.train(200)
-print("Reward:", reward)
+# reward_before, std_before = evaluate_policy(hbc, env, 10)
+# hbc.train(200)
+# print("Reward:", reward)
