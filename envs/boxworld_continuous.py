@@ -10,12 +10,14 @@ class BoxWorldContinuousEnv(gym.Env):
     def __init__(self, render_mode=None, size=5, n_targets=1,
                  latent_distribution=np.random.randint,
                  velocity=0.3, closeness_threshold=1,
-                 allow_variable_horizon=True):
+                 allow_variable_horizon=True,
+                 fixed_targets=None):
         self.size = size  # The size of the square grid
         self.window_size = 512  # The size of the PyGame window
-        self._max_episode_steps = 25
+        self._max_episode_steps = (size/velocity)**2
 
         self.n_targets = n_targets
+        self.fixed_targets=fixed_targets
         self._occupied_grids = np.empty((n_targets + 1, 2), dtype=np.float32)
         self.latent_distribution = latent_distribution
 
@@ -78,7 +80,10 @@ class BoxWorldContinuousEnv(gym.Env):
         closeness = np.isclose(self._occupied_grids, location, atol=self.closeness_threshold)
         return closeness.all(axis=1).any()
 
-    def reset(self, seed=None, targets=None):
+    def reset(self, seed=None, options=None):
+        return self._reset(seed=seed, targets=self.fixed_targets)
+
+    def _reset(self, seed=None, targets=None):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 

@@ -9,12 +9,14 @@ class BoxWorldEnv(gym.Env):
 
     def __init__(self, render_mode=None, size=5, n_targets=1,
                  latent_distribution=np.random.randint,
-                 allow_variable_horizon=True):
+                 allow_variable_horizon=True,
+                 fixed_targets=None):
         self.size = size  # The size of the square grid
         self.window_size = 512  # The size of the PyGame window
         self._max_episode_steps = size**2
 
         self.n_targets = n_targets
+        self.fixed_targets=fixed_targets
         self._occupied_grids = np.empty((n_targets + 1, 2), dtype=np.int64)
         self.latent_distribution = latent_distribution
 
@@ -78,13 +80,16 @@ class BoxWorldEnv(gym.Env):
     def _is_occupied(self, location):
         return (self._occupied_grids==location).all(axis=1).any()
 
-    def reset(self, seed=None, targets=None):
+    def reset(self, seed=None, options=None):
+        return self._reset(seed=seed, targets=self.fixed_targets)
+
+    def _reset(self, seed=None, targets=None):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
 
         self.at_absorb_state = False
 
-        self._occupied_grids = np.empty((self.n_targets + 1, 2), dtype=np.float32)
+        self._occupied_grids = np.empty((self.n_targets + 1, 2), dtype=np.int64)
         self._elapsed_steps = 0
         self._visited_goals = []
         self._curr_goal = self.sample_next_goal()
@@ -107,9 +112,9 @@ class BoxWorldEnv(gym.Env):
         
 
         # Choose the agent's location uniformly at random
-        agent_location = self.np_random.integers(0, self.size, size=2, dtype=int)
+        agent_location = self.np_random.integers(0, self.size, size=2)
         while self._is_occupied(agent_location):
-            agent_location = self.np_random.integers(0, self.size, size=2, dtype=int)
+            agent_location = self.np_random.integers(0, self.size, size=2)
 
         self._occupied_grids[0] = agent_location
 
