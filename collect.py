@@ -95,10 +95,11 @@ def get_expert(env_name, kwargs):
     return expert
 
 def train_expert(env_name, kwargs, n_epoch=1e6):
+    expert_dir = get_dir_name(env_name, kwargs)
+    assert not os.path.exists(expert_dir), 'Expert has already been trained and can be used'
     vec_env = get_environment(env_name, full_obs=True, kwargs=kwargs)
 
     model = PPO("MlpPolicy", vec_env, verbose=1)
     model.learn(total_timesteps=n_epoch, progress_bar=True)
-    expert_dir = get_dir_name(env_name, kwargs)
 
     model.save(expert_dir)
