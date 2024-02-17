@@ -73,15 +73,16 @@ class HBC:
         )
         self._logger = self.policy_lo._logger
     
+
     def train(self, n_epochs):
         N = len(self.expert_demos)
         queries = []
         for i in range(N):
             M = len(self.options[i])
-            query = -np.ones(M)
+            query = -np.ones(M+1)
             for j in range(M):
-                if np.random.uniform() <= 12:
-                    query[j] = self.options[i][j]
+                if np.random.uniform() <= 0.9:
+                    query[j+1] = self.options[i][j]
             queries.append(query)
 
         for epoch in range(n_epochs):
@@ -93,7 +94,7 @@ class HBC:
             self._logger.record("hbc/0-1distance", np.mean(distances))
             self._logger.record("hbc/mean_return", evaluate_policy(hbc, env, 10)[0])
             self._logger.record("hbc/std_return", evaluate_policy(hbc, env, 10)[1])
-
+            
             transitions_lo, transitions_hi = self.get_h_transitions(self.expert_demos, options)
             self.policy_lo.set_demonstrations(transitions_lo)
             self.policy_hi.set_demonstrations(transitions_hi)
@@ -142,7 +143,7 @@ class HBC:
         N = states.shape[0]
 
         if query is None:
-            query = -np.ones(N, dtype=int)
+            query = -np.ones(N+1, dtype=int)
 
         with torch.no_grad():
             log_acts = self.log_prob_action(states, acts)  # demo_len x 1 x ct
@@ -157,18 +158,20 @@ class HBC:
             log_prob0 = log_opts[0, -1] + log_acts[0, 0]
             # forward
             max_path = torch.empty(N, self.option_dim, dtype=torch.long, device=self.device)
-            accumulate_logp = log_prob0
-            max_path[0] = -1
-            for i in range(1, N):
-                if query[i]>=0:
-                    accumulate_logp, max_path[i, :] = torch.zeros([2]), query[i] * torch.ones([2])
+            accumulate_logp = torch.zeros(self.option_dim) #if query[1]>=0 else log_prob0
+            # max_path[0] = -1
+            for i in range(N):
+                if query[i+1]>=0:
+                    accumulate_logp, max_path[i, :] = accumulate_logp + torch.zeros([2]), query[i+1] * torch.ones([2])
                 else:
                     accumulate_logp, max_path[i, :] = (accumulate_logp.unsqueeze(dim=-1) + log_prob[i]).max(dim=-2)
             # backward
-            c_array = torch.zeros(N+1, 1, dtype=torch.long, device=self.device)
-            log_prob_traj, c_array[-1] = accumulate_logp.max(dim=-1)
-            for i in range(N, 0, -1):
-                c_array[i-1] = max_path[i-1][c_array[i]]
+            c_array = -torch.ones(N+1, 1, dtype=torch.long, device=self.device)
+            # log_prob_traj, c_array[-1] = accumulate_logp.max(dim=-1)
+            log_prob_traj, idx = accumulate_logp.max(dim=-1)
+            c_array[-1] = max_path[-1][idx]
+            for i in range(N, 1, -1):
+                c_array[i-1] = max_path[i-2][c_array[i]]
         return c_array.detach().numpy(), log_prob_traj.detach()
         # return self.options
 
@@ -260,12 +263,12 @@ rollouts2 = get_expert_trajectories(env_name=env_name,
 rollouts = filter_intent_TrajsWRewards(rollouts2)
 options = [rollout.obs[:,-1] for rollout in rollouts2]
 
-hbc = HBC(rollouts, options, 2, 'cpu', env, exp_identifier='hbc-100%query')
+hbc = HBC(rollouts, options, 2, 'cpu', env, exp_identifier='hbc-50%query-diff-approach')
 
 # env = get_environment(env_name=env_name,
 #                       full_obs=True,
 #                       n_envs=1,
 #                       kwargs=kwargs)
 # reward_before, std_before = evaluate_policy(hbc, env, 1, render=True)
-hbc.train(30)
+# hbc.train(30)
 # print("Reward:", reward)
