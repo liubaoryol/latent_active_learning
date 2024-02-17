@@ -32,7 +32,7 @@ class HBC:
                  option_dim: int,
                  device: str,
                  vec_env,
-                 exp_identifier=None
+                 exp_identifier='hbc'
                  ):
 
         self.expert_demos = expert_demos
@@ -40,16 +40,10 @@ class HBC:
         self.device = device
         self.option_dim = option_dim
 
-        if exp_identifier is not None:
-            logging_dir = os.path.join(
-                CURR_DIR,
-                f'results/{exp_identifier}_{timestamp()}/'
-                )
-        else:
-            logging_dir = os.path.join(
-                CURR_DIR,
-                f'results/hbc_{timestamp()}/'
-                )
+        logging_dir = os.path.join(
+            CURR_DIR,
+            f'results/{exp_identifier}_{timestamp()}/'
+            )
 
         new_logger = imit_logger.configure(logging_dir,
                                            ["stdout", "csv", "tensorboard"]
@@ -68,32 +62,33 @@ class HBC:
             device=device,
             custom_logger=new_logger
         )
+        new_lo[-1] = -1
         self.policy_hi = bc.BC(
             observation_space=spaces.Box(low=new_lo, high=new_hi),
             action_space=spaces.Discrete(option_dim),
             rng=rng,
-            device=device
+            device=device,
+            # optimizer_cls=torch.optim.SGD,
+            # optimizer_kwargs={'lr': 0.01}
         )
         self._logger = self.policy_lo._logger
     
     def train(self, n_epochs):
         for epoch in range(n_epochs):
-            options = [np.insert(o, 0, -1).reshape(-1, 1) for o in self.options]
-            # options = self.viterbi_list(self.expert_demos)
-            transitions_lo, transitions_hi = self.get_h_transitions(self.expert_demos, options)
-            self.policy_lo.set_demonstrations(transitions_lo)
-            self.policy_hi.set_demonstrations(transitions_hi)
-            self.policy_lo.train(n_epochs=30)
-            self.policy_hi.train(n_epochs=30)
-
+            # options = [np.insert(o, 0, -1).reshape(-1, 1) for o in self.options]
+            options = self.viterbi_list(self.expert_demos)
             f = lambda x: np.linalg.norm(
                 (options[x].squeeze()[1:] - self.options[x]), 1)/len(self.options[x])
             distances = list(map(f, range(len(options))))
             self._logger.record("hbc/0-1distance", np.mean(distances))
             self._logger.record("hbc/mean_return", evaluate_policy(hbc, env, 10)[0])
             self._logger.record("hbc/std_return", evaluate_policy(hbc, env, 10)[1])
-            
-            np.linalg.norm((options[0].squeeze()[1:] - self.options[0]), 1)    
+
+            transitions_lo, transitions_hi = self.get_h_transitions(self.expert_demos, options)
+            self.policy_lo.set_demonstrations(transitions_lo)
+            self.policy_hi.set_demonstrations(transitions_hi)
+            self.policy_lo.train(n_epochs=1)
+            self.policy_hi.train(n_epochs=1)
 
     def get_h_transitions(self, expert_demos, options):
         expert_lo = []
@@ -113,7 +108,7 @@ class HBC:
             expert_hi.append(
                 imitation.data.types.TrajectoryWithRew(
                     obs = np.concatenate([demo.obs, opts[:-1]], axis=1),
-                    acts = opts[1:-1],
+                    acts = opts[1:-1].reshape(-1),
                     infos = demo.infos,
                     terminal = demo.terminal,
                     rews = demo.rews
@@ -213,6 +208,7 @@ class HBC:
             n = len(observation)
             state = -np.ones(n)
         state[episode_start] = -1
+
         hi_input = obs_as_tensor(np.concatenate([observation, state.reshape(-1, 1)], axis=1), device=self.device)
         state, _ = self.policy_hi.policy.predict(hi_input)
         lo_input = obs_as_tensor(np.concatenate([observation, state.reshape(-1, 1)], axis=1), device=self.device)
@@ -229,7 +225,10 @@ kwargs = {
     'fixed_targets': [[0,0],[4,4]]
     }
 from latent_active_learning.collect import train_expert
-train_expert(env_name, kwargs)
+try:
+    train_expert(env_name, kwargs)
+except AssertionError:
+    pass
 # Only used for creating the networks of HBC
 env = get_environment(env_name=env_name,
                       full_obs=False,
@@ -244,7 +243,12 @@ rollouts2 = get_expert_trajectories(env_name=env_name,
 rollouts = filter_intent_TrajsWRewards(rollouts2)
 options = [rollout.obs[:,-1] for rollout in rollouts2]
 
-hbc = HBC(rollouts, options, 2, 'cpu', env, exp_identifier='hbc-alwaysquery-nonfixed')
-# reward_before, std_before = evaluate_policy(hbc, env, 10)
-# hbc.train(200)
+hbc = HBC(rollouts, options, 2, 'cpu', env, exp_identifier='hbc-alwaysquery')
+
+# env = get_environment(env_name=env_name,
+#                       full_obs=True,
+#                       n_envs=1,
+#                       kwargs=kwargs)
+# reward_before, std_before = evaluate_policy(hbc, env, 1, render=True)
+hbc.train(30)
 # print("Reward:", reward)
