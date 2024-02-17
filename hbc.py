@@ -91,7 +91,7 @@ class HBC:
             # options1 = [np.insert(o, 0, -1).reshape(-1, 1) for o in self.options]
             options = self.viterbi_list(self.expert_demos, queries)
             f = lambda x: np.linalg.norm(
-                (options[x].squeeze()[1:] - self.options[x][:-1]), 1)/len(self.options[x])
+                (options[x].squeeze()[1:] - self.options[x]), 1)/len(self.options[x])
             distances = list(map(f, range(len(options))))
             self._logger.record("hbc/0-1distance", np.mean(distances))
             self._logger.record("hbc/mean_return", evaluate_policy(hbc, env, 10)[0])
@@ -145,7 +145,7 @@ class HBC:
         states = expert_demos.obs
         acts = expert_demos.acts
 
-        N = states.shape[0]-1
+        N = states.shape[0]#-1
 
         if query is None:
             query = -np.ones(N+1, dtype=int)
@@ -156,10 +156,12 @@ class HBC:
             # Special handling of last state:
             # log_acts = torch.concatenate([log_acts, torch.zeros([1, self.option_dim])])
             log_acts = log_acts.reshape([-1, 1, self.option_dim])
+            last_log_opts = log_opts[-1][1:]
             log_opts = log_opts[:-1]
 
             # Done special handling
             log_prob = log_opts[:, 1:] + log_acts
+            log_prob = torch.concatenate([log_prob, last_log_opts.unsqueeze(0)])
             # log_prob = log_opts[:, :-1] + log_acts
             # log_prob0 = log_opts[0, -1] + log_acts[0, 0]
             # forward
