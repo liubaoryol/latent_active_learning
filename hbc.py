@@ -32,13 +32,15 @@ class HBC:
                  option_dim: int,
                  device: str,
                  vec_env,
-                 exp_identifier='hbc'
+                 exp_identifier='hbc',
+                 query_percent=1
                  ):
 
         self.expert_demos = expert_demos
         self.options = options
         self.device = device
         self.option_dim = option_dim
+        self.query_percent = query_percent
 
         logging_dir = os.path.join(
             CURR_DIR,
@@ -81,7 +83,7 @@ class HBC:
             M = len(self.options[i])
             query = -np.ones(M+1)
             for j in range(M):
-                if np.random.uniform() <= 0.9:
+                if np.random.uniform() <= self.query_percent:
                     query[j+1] = self.options[i][j]
             queries.append(query)
 
@@ -89,7 +91,7 @@ class HBC:
             # options1 = [np.insert(o, 0, -1).reshape(-1, 1) for o in self.options]
             options = self.viterbi_list(self.expert_demos, queries)
             f = lambda x: np.linalg.norm(
-                (options[x].squeeze()[1:] - self.options[x]), 1)/len(self.options[x])
+                (options[x].squeeze()[1:] - self.options[x][:-1]), 1)/len(self.options[x])
             distances = list(map(f, range(len(options))))
             self._logger.record("hbc/0-1distance", np.mean(distances))
             self._logger.record("hbc/mean_return", evaluate_policy(hbc, env, 10)[0])
@@ -97,9 +99,12 @@ class HBC:
             
             transitions_lo, transitions_hi = self.get_h_transitions(self.expert_demos, options)
             self.policy_lo.set_demonstrations(transitions_lo)
-            self.policy_hi.set_demonstrations(transitions_hi)
             self.policy_lo.train(n_epochs=1)
-            self.policy_hi.train(n_epochs=1)
+            for j in range(10):
+                options = self.viterbi_list(self.expert_demos, queries)
+                transitions_lo, transitions_hi = self.get_h_transitions(self.expert_demos, options)
+                self.policy_hi.set_demonstrations(transitions_hi)
+                self.policy_hi.train(n_epochs=1)
 
     def get_h_transitions(self, expert_demos, options):
         expert_lo = []
@@ -140,7 +145,7 @@ class HBC:
         states = expert_demos.obs
         acts = expert_demos.acts
 
-        N = states.shape[0]
+        N = states.shape[0]-1
 
         if query is None:
             query = -np.ones(N+1, dtype=int)
@@ -149,20 +154,21 @@ class HBC:
             log_acts = self.log_prob_action(states, acts)  # demo_len x 1 x ct
             log_opts = self.log_prob_option(states)  # demo_len x (ct_1+1) x ct
             # Special handling of last state:
-            log_acts = torch.concatenate([log_acts, torch.zeros([1, self.option_dim])])
+            # log_acts = torch.concatenate([log_acts, torch.zeros([1, self.option_dim])])
             log_acts = log_acts.reshape([-1, 1, self.option_dim])
-            # log_opts = log_opts[:-1]
+            log_opts = log_opts[:-1]
 
             # Done special handling
-            log_prob = log_opts[:, :-1] + log_acts
-            log_prob0 = log_opts[0, -1] + log_acts[0, 0]
+            log_prob = log_opts[:, 1:] + log_acts
+            # log_prob = log_opts[:, :-1] + log_acts
+            # log_prob0 = log_opts[0, -1] + log_acts[0, 0]
             # forward
             max_path = torch.empty(N, self.option_dim, dtype=torch.long, device=self.device)
             accumulate_logp = torch.zeros(self.option_dim) #if query[1]>=0 else log_prob0
             # max_path[0] = -1
             for i in range(N):
-                if query[i+1]>=0:
-                    accumulate_logp, max_path[i, :] = accumulate_logp + torch.zeros([2]), query[i+1] * torch.ones([2])
+                if query[i]>=0:
+                    accumulate_logp, max_path[i, :] = accumulate_logp + torch.zeros([self.option_dim]), query[i] * torch.ones([self.option_dim])
                 else:
                     accumulate_logp, max_path[i, :] = (accumulate_logp.unsqueeze(dim=-1) + log_prob[i]).max(dim=-2)
             # backward
@@ -171,7 +177,7 @@ class HBC:
             log_prob_traj, idx = accumulate_logp.max(dim=-1)
             c_array[-1] = max_path[-1][idx]
             for i in range(N, 1, -1):
-                c_array[i-1] = max_path[i-2][c_array[i]]
+                c_array[i-1] = max_path[i-1][c_array[i]]
         return c_array.detach().numpy(), log_prob_traj.detach()
         # return self.options
 
@@ -237,6 +243,47 @@ class HBC:
 
 
 
+# env_name = "BoxWorld-v0"
+# kwargs = {
+#     'size': 5,
+#     'n_targets': 2,
+#     'allow_variable_horizon': True,
+#     'fixed_targets': [[0,0],[4,4]]
+#     }
+# from latent_active_learning.collect import train_expert
+# try:
+#     train_expert(env_name, kwargs)
+# except AssertionError:
+#     pass
+# # Only used for creating the networks of HBC
+# env = get_environment(env_name=env_name,
+#                       full_obs=False,
+#                       n_envs=1,
+#                       kwargs=kwargs)
+
+# # Here assume full observability.
+# rollouts2 = get_expert_trajectories(env_name=env_name,
+#                                     full_obs=True,
+#                                     kwargs=kwargs,
+#                                     n_demo=500) #[[0,0], [4,4]])
+# rollouts = filter_intent_TrajsWRewards(rollouts2)
+# options = [rollout.obs[:,-1] for rollout in rollouts2]
+
+# hbc = HBC(rollouts, options, 2, 'cpu', env, exp_identifier='hbc-50%query-diff-approach')
+
+# env = get_environment(env_name=env_name,
+#                       full_obs=True,
+#                       n_envs=1,
+#                       kwargs=kwargs)
+# reward_before, std_before = evaluate_policy(hbc, env, 1, render=True)
+# hbc.train(30)
+# print("Reward:", reward)
+
+
+
+# Let's see how hi level policy is learning when we have a trained low level policy
+
+
 env_name = "BoxWorld-v0"
 kwargs = {
     'size': 5,
@@ -263,12 +310,14 @@ rollouts2 = get_expert_trajectories(env_name=env_name,
 rollouts = filter_intent_TrajsWRewards(rollouts2)
 options = [rollout.obs[:,-1] for rollout in rollouts2]
 
-hbc = HBC(rollouts, options, 2, 'cpu', env, exp_identifier='hbc-50%query-diff-approach')
+hbc = HBC(
+    rollouts,
+    options,
+    option_dim=2,
+    device='cpu',
+    vec_env=env,
+    exp_identifier='hbc-1-baseline',
+    query_percent=1
+    )
+hbc.train(30)
 
-# env = get_environment(env_name=env_name,
-#                       full_obs=True,
-#                       n_envs=1,
-#                       kwargs=kwargs)
-# reward_before, std_before = evaluate_policy(hbc, env, 1, render=True)
-# hbc.train(30)
-# print("Reward:", reward)
