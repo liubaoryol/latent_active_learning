@@ -19,7 +19,7 @@ import latent_active_learning
 from latent_active_learning.collect import get_expert_trajectories
 from latent_active_learning.collect import get_environment
 from latent_active_learning.collect import filter_intent_TrajsWRewards
-
+from latent_active_learning.wrappers.latent_wrapper import TransformBoxWorldReward, FilterLatent
 
 CURR_DIR = "/home/liubove/Documents/my-packages/latent_active_learning/"
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
@@ -31,7 +31,7 @@ class HBC:
                  options: List,
                  option_dim: int,
                  device: str,
-                 vec_env,
+                 env,
                  exp_identifier='hbc',
                  query_percent=1
                  ):
@@ -41,7 +41,7 @@ class HBC:
         self.device = device
         self.option_dim = option_dim
         self.query_percent = query_percent
-
+        self.env = env
         logging_dir = os.path.join(
             CURR_DIR,
             f'results/{exp_identifier}_{timestamp()}/'
@@ -51,7 +51,7 @@ class HBC:
                                            ["stdout", "csv", "tensorboard"]
                                            )
 
-        obs_space = vec_env.observation_space
+        obs_space = env.observation_space
         new_lo = np.concatenate([obs_space.low, [0]])
         new_hi = np.concatenate([obs_space.high, [option_dim]])
         action_dim = 4 # TODO: get this from gym environment
@@ -59,7 +59,7 @@ class HBC:
 
         self.policy_lo = bc.BC(
             observation_space=spaces.Box(low=new_lo, high=new_hi),
-            action_space=vec_env.action_space, # Check as sometimes it's continuosu
+            action_space=env.action_space, # Check as sometimes it's continuosu
             rng=rng,
             device=device,
             custom_logger=new_logger
@@ -89,22 +89,27 @@ class HBC:
 
         for epoch in range(n_epochs):
             # options1 = [np.insert(o, 0, -1).reshape(-1, 1) for o in self.options]
-            options = self.viterbi_list(self.expert_demos, queries)
-            f = lambda x: np.linalg.norm(
-                (options[x].squeeze()[1:] - self.options[x]), 1)/len(self.options[x])
-            distances = list(map(f, range(len(options))))
+            with torch.no_grad():
+                options = self.viterbi_list(self.expert_demos, queries)
+                f = lambda x: np.linalg.norm(
+                    (options[x].squeeze()[1:] - self.options[x]), 1)/len(self.options[x])
+                distances = list(map(f, range(len(options))))
             self._logger.record("hbc/0-1distance", np.mean(distances))
-            self._logger.record("hbc/mean_return", evaluate_policy(hbc, env, 10)[0])
-            self._logger.record("hbc/std_return", evaluate_policy(hbc, env, 10)[1])
+            mean_return, std_return = evaluate_policy(self, TransformBoxWorldReward(self.env), 10)
+            self._logger.record("hbc/mean_return", mean_return)
+            self._logger.record("hbc/std_return", std_return)
             
             transitions_lo, transitions_hi = self.get_h_transitions(self.expert_demos, options)
             self.policy_lo.set_demonstrations(transitions_lo)
             self.policy_lo.train(n_epochs=1)
-            for j in range(10):
-                options = self.viterbi_list(self.expert_demos, queries)
-                transitions_lo, transitions_hi = self.get_h_transitions(self.expert_demos, options)
-                self.policy_hi.set_demonstrations(transitions_hi)
-                self.policy_hi.train(n_epochs=1)
+
+            self.policy_hi.set_demonstrations(transitions_hi)
+            self.policy_hi.train(n_epochs=1)
+            # for j in range(10):
+            #     options = self.viterbi_list(self.expert_demos, queries)
+            #     transitions_lo, transitions_hi = self.get_h_transitions(self.expert_demos, options)
+            #     self.policy_hi.set_demonstrations(transitions_hi)
+            #     self.policy_hi.train(n_epochs=1)
 
     def get_h_transitions(self, expert_demos, options):
         expert_lo = []
@@ -244,82 +249,35 @@ class HBC:
         return actions, state
 
 
-
-# env_name = "BoxWorld-v0"
-# kwargs = {
-#     'size': 5,
-#     'n_targets': 2,
-#     'allow_variable_horizon': True,
-#     'fixed_targets': [[0,0],[4,4]]
-#     }
-# from latent_active_learning.collect import train_expert
-# try:
-#     train_expert(env_name, kwargs)
-# except AssertionError:
-#     pass
-# # Only used for creating the networks of HBC
-# env = get_environment(env_name=env_name,
-#                       full_obs=False,
-#                       n_envs=1,
-#                       kwargs=kwargs)
-
-# # Here assume full observability.
-# rollouts2 = get_expert_trajectories(env_name=env_name,
-#                                     full_obs=True,
-#                                     kwargs=kwargs,
-#                                     n_demo=500) #[[0,0], [4,4]])
-# rollouts = filter_intent_TrajsWRewards(rollouts2)
-# options = [rollout.obs[:,-1] for rollout in rollouts2]
-
-# hbc = HBC(rollouts, options, 2, 'cpu', env, exp_identifier='hbc-50%query-diff-approach')
-
-# env = get_environment(env_name=env_name,
-#                       full_obs=True,
-#                       n_envs=1,
-#                       kwargs=kwargs)
-# reward_before, std_before = evaluate_policy(hbc, env, 1, render=True)
-# hbc.train(30)
-# print("Reward:", reward)
-
-
-
-# Let's see how hi level policy is learning when we have a trained low level policy
-
-
 env_name = "BoxWorld-v0"
 kwargs = {
     'size': 5,
-    'n_targets': 2,
+    'n_targets': 3,
     'allow_variable_horizon': True,
-    'fixed_targets': [[0,0],[4,4]]
+    'fixed_targets': [[0,0],[4,4], [0,4]]
     }
 from latent_active_learning.collect import train_expert
 try:
     train_expert(env_name, kwargs)
 except AssertionError:
     pass
-# Only used for creating the networks of HBC
-env = get_environment(env_name=env_name,
-                      full_obs=False,
-                      n_envs=1,
-                      kwargs=kwargs)
 
-# Here assume full observability.
 rollouts2 = get_expert_trajectories(env_name=env_name,
                                     full_obs=True,
                                     kwargs=kwargs,
                                     n_demo=500) #[[0,0], [4,4]])
 rollouts = filter_intent_TrajsWRewards(rollouts2)
 options = [rollout.obs[:,-1] for rollout in rollouts2]
-
+env = gym.make("BoxWorld-v0", **kwargs)
 hbc = HBC(
     rollouts,
     options,
-    option_dim=2,
+    option_dim=3,
     device='cpu',
-    vec_env=env,
-    exp_identifier='hbc-1-baseline',
-    query_percent=1
+    env=FilterLatent(env, [-1]),
+    exp_identifier='hbc-95percent-improved-return',
+    query_percent=0.95
     )
+
 hbc.train(30)
 
