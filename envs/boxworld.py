@@ -17,7 +17,7 @@ class BoxWorldEnv(gym.Env):
 
         self.n_targets = n_targets
         self.fixed_targets=fixed_targets
-        self._occupied_grids = np.empty((n_targets + 1, 2), dtype=np.int64)
+        self.occupied_grids = np.empty((n_targets + 1, 2), dtype=np.int64)
         self.latent_distribution = latent_distribution
 
         self.allow_variable_horizon=allow_variable_horizon
@@ -65,7 +65,7 @@ class BoxWorldEnv(gym.Env):
         self.clock = None
 
     def _get_obs(self):
-        obs = np.concatenate(self._occupied_grids)
+        obs = np.concatenate(self.occupied_grids)
 
         obs = np.append(obs, self._curr_goal)
         return obs
@@ -78,7 +78,7 @@ class BoxWorldEnv(gym.Env):
     #     }
 
     def _is_occupied(self, location):
-        return (self._occupied_grids==location).all(axis=1).any()
+        return (self.occupied_grids==location).all(axis=1).any()
 
     def reset(self, seed=None, options=None):
         return self._reset(seed=seed, targets=self.fixed_targets)
@@ -89,34 +89,34 @@ class BoxWorldEnv(gym.Env):
 
         self.at_absorb_state = False
 
-        self._occupied_grids = np.empty((self.n_targets + 1, 2), dtype=np.int64)
+        self.occupied_grids = np.empty((self.n_targets + 1, 2), dtype=np.int64)
         self._elapsed_steps = 0
-        self._visited_goals = []
+        self.visited_goals = []
         self._curr_goal = self.sample_next_goal()
 
         if targets is not None:
             assert len(targets)==self.n_targets, \
             'Number of targets should be {}, but {} were given'.format(
                 self.n_targets, len(targets))
-            self._occupied_grids[1:] = targets
+            self.occupied_grids[1:] = targets
             
         else:
             # We will sample the target's location randomly until it does not coincide with the agent's location
             for element in range(1, self.n_targets+1):
-                target_location = self._occupied_grids[0]
+                target_location = self.occupied_grids[0]
                 while self._is_occupied(target_location):
                     target_location = self.np_random.integers(
                         0, self.size, size=2, dtype=int
                     )
-                self._occupied_grids[element] = target_location
-        
+                self.occupied_grids[element] = target_location
+            self.fixed_targets = self.occupied_grids[1:]
 
         # Choose the agent's location uniformly at random
         agent_location = self.np_random.integers(0, self.size, size=2)
         while self._is_occupied(agent_location):
             agent_location = self.np_random.integers(0, self.size, size=2)
 
-        self._occupied_grids[0] = agent_location
+        self.occupied_grids[0] = agent_location
 
 
         observation = self._get_obs()
@@ -138,26 +138,25 @@ class BoxWorldEnv(gym.Env):
             reward = 0
 
         else:
-            if len(self._visited_goals) == self.n_targets:
+            if len(self.visited_goals) == self.n_targets:
                 raise ValueError("All targets have been visited. Call `reset()` function")
 
             reward = -1
             # Map the action (element of {0,1,2,3}) to the direction we walk in
             direction = self._action_to_direction[action]
             # We use `np.clip` to make sure we don't leave the grid
-            agent_location = self._occupied_grids[0]
+            agent_location = self.occupied_grids[0]
             agent_location = np.clip(
                 agent_location + direction, 0, self.size - 1
             )
-            self._occupied_grids[0] = agent_location
+            self.occupied_grids[0] = agent_location
 
-            curr_target = self._occupied_grids[self._curr_goal + 1]
+            curr_target = self.occupied_grids[self._curr_goal + 1]
             # An episode is done iff the agent has reached the target
-            curr_goal_achieved = np.array_equal(agent_location, curr_target)
-            if curr_goal_achieved:
-                self._visited_goals.append(self._curr_goal)
+            if self.target_achieved(agent_location, curr_target):
+                self.visited_goals.append(self._curr_goal)
                 reward = 50
-                if len(self._visited_goals) == self.n_targets:
+                if len(self.visited_goals) == self.n_targets:
                     if self.allow_variable_horizon:
                         terminated = True
                     else:
@@ -178,6 +177,9 @@ class BoxWorldEnv(gym.Env):
 
         return observation, reward, terminated, truncated, info
 
+    def target_achieved(self, agent_location, target):
+        return np.array_equal(agent_location, target)
+
     def step_from_obs(self, obs, action):
 
         # Map the action (element of {0,1,2,3}) to the direction we walk in
@@ -191,7 +193,7 @@ class BoxWorldEnv(gym.Env):
 
     def sample_next_goal(self):
         targets = list(range(self.n_targets))
-        for visited in self._visited_goals:
+        for visited in self.visited_goals:
             targets.remove(visited)
         m = len(targets)
         # if m > 0
@@ -216,10 +218,10 @@ class BoxWorldEnv(gym.Env):
         )  # The size of a single grid square in pixels
 
         # First we draw the target
-        agent_location = self._occupied_grids[0]
-        targets = self._occupied_grids[1:]
+        agent_location = self.occupied_grids[0]
+        targets = self.occupied_grids[1:]
         for idx, target_location in enumerate(targets):
-            if idx not in self._visited_goals:
+            if idx not in self.visited_goals:
                 color = (155, 0, 0) if idx==self._curr_goal else (255, 0, 0)
                 pygame.draw.rect(
                     canvas,

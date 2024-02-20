@@ -68,3 +68,55 @@ class FilterLatent(gym.ObservationWrapper, gym.utils.RecordConstructorArgs):
         """
 
         return observation[self.mask]
+
+
+
+class TransformBoxWorldReward(gym.RewardWrapper, gym.utils.RecordConstructorArgs):
+    """Transform the reward via an arbitrary function.
+
+    Warning:
+        If the base environment specifies a reward range which is not invariant under :attr:`f`, the :attr:`reward_range` of the wrapped environment will be incorrect.
+
+    Example:
+        >>> import gymnasium as gym
+        >>> from gymnasium.wrappers import TransformReward
+        >>> env = gym.make("CartPole-v1")
+        >>> env = TransformReward(env, lambda r: 0.01*r)
+        >>> _ = env.reset()
+        >>> observation, reward, terminated, truncated, info = env.step(env.action_space.sample())
+        >>> reward
+        0.01
+    """
+
+    def __init__(self, env: gym.Env):
+        """Initialize the :class:`TransformReward` wrapper with an environment and reward transform function :attr:`f`.
+
+        Args:
+            env: The environment to apply the wrapper
+            f: A function that transforms the reward
+        """
+        gym.RewardWrapper.__init__(self, env)
+
+    def reset(self, seed=None, options=None):
+        self.visited_goals = []
+        return self.env.reset()
+
+    def reward(self, reward):
+        """Transforms the reward using callable :attr:`f`.
+
+        Args:
+            reward: The reward to transform
+
+        Returns:
+            The transformed reward
+        """
+        
+        agent_location = self.env.unwrapped.occupied_grids[0]
+        for target in self.env.unwrapped.fixed_targets:
+            if target not in self.visited_goals and self.env.unwrapped.target_achieved(
+                agent_location,
+                target
+            ):
+                self.visited_goals.append(target)
+                return 50
+        return reward
