@@ -112,7 +112,8 @@ class TransformBoxWorldReward(gym.RewardWrapper, gym.utils.RecordConstructorArgs
         """
         
         agent_location = self.env.unwrapped.occupied_grids[0]
-        for target in self.env.unwrapped.fixed_targets:
+        targets = self.env.unwrapped.occupied_grids[1:]
+        for target in targets:
             if target not in self.visited_goals and self.env.unwrapped.target_achieved(
                 agent_location,
                 target
