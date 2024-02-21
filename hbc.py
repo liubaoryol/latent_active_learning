@@ -42,9 +42,10 @@ class HBC:
         self.option_dim = option_dim
         self.query_percent = query_percent
         self.env = env
+        boxworld_params = f'size{env.size}-targets{env.n_targets}'
         logging_dir = os.path.join(
             CURR_DIR,
-            f'results/{exp_identifier}_{timestamp()}/'
+            f'results/{boxworld_params}/{exp_identifier}_{timestamp()}/'
             )
 
         new_logger = imit_logger.configure(logging_dir,
@@ -278,11 +279,11 @@ kwargs = {
     'size': 5,
     'n_targets': 3,
     'allow_variable_horizon': True,
-    'fixed_targets': [[0,0],[4,4], [0,4]]
+    'fixed_targets': [[0,0],[4,4], [0,4],]# [9,0],[0,9],[9,9]]
     }
 from latent_active_learning.collect import train_expert
 try:
-    train_expert(env_name, kwargs)
+    train_expert(env_name, kwargs, n_epoch=1e6)
 except AssertionError:
     pass
 
@@ -299,8 +300,8 @@ hbc = HBC(
     option_dim=3,
     device='cpu',
     env=FilterLatent(env, [-1]),
-    exp_identifier='hbc-95percent-improved-return',
-    query_percent=0.95
+    exp_identifier='hbc-0percent-improved-return',
+    query_percent=0
     )
 
 hbc.train(30)

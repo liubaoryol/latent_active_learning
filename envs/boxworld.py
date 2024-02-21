@@ -13,7 +13,7 @@ class BoxWorldEnv(gym.Env):
                  fixed_targets=None):
         self.size = size  # The size of the square grid
         self.window_size = 512  # The size of the PyGame window
-        self._max_episode_steps = size**2
+        self._max_episode_steps = 2 * size**2
 
         self.n_targets = n_targets
         self.fixed_targets=fixed_targets
@@ -68,7 +68,7 @@ class BoxWorldEnv(gym.Env):
         self.clock = None
 
     def _get_obs(self):
-        visited = [0 if t in self.visited_goals else 1 for t in range(self.n_targets)]
+        visited = [0 if t in self._visited_goals else 1 for t in range(self.n_targets)]
 
         obs = np.concatenate(self.occupied_grids)
         obs = np.concatenate([obs, visited, [self._curr_goal]])
@@ -96,7 +96,7 @@ class BoxWorldEnv(gym.Env):
 
         self.occupied_grids = np.empty((self.n_targets + 1, 2), dtype=np.int64)
         self._elapsed_steps = 0
-        self.visited_goals = []
+        self._visited_goals = []
         self._curr_goal = self.sample_next_goal()
 
         if targets is not None:
@@ -142,7 +142,7 @@ class BoxWorldEnv(gym.Env):
             reward = 0
 
         else:
-            if len(self.visited_goals) == self.n_targets:
+            if len(self._visited_goals) == self.n_targets:
                 raise ValueError("All targets have been visited. Call `reset()` function")
 
             reward = -1
@@ -158,9 +158,9 @@ class BoxWorldEnv(gym.Env):
             curr_target = self.occupied_grids[self._curr_goal + 1]
             # An episode is done iff the agent has reached the target
             if self.target_achieved(agent_location, curr_target):
-                self.visited_goals.append(self._curr_goal)
+                self._visited_goals.append(self._curr_goal)
                 reward = 50
-                if len(self.visited_goals) == self.n_targets:
+                if len(self._visited_goals) == self.n_targets:
                     if self.allow_variable_horizon:
                         terminated = True
                     else:
@@ -197,7 +197,7 @@ class BoxWorldEnv(gym.Env):
 
     def sample_next_goal(self):
         targets = list(range(self.n_targets))
-        for visited in self.visited_goals:
+        for visited in self._visited_goals:
             targets.remove(visited)
         m = len(targets)
         # if m > 0
@@ -225,7 +225,7 @@ class BoxWorldEnv(gym.Env):
         agent_location = self.occupied_grids[0]
         targets = self.occupied_grids[1:]
         for idx, target_location in enumerate(targets):
-            if idx not in self.visited_goals:
+            if idx not in self._visited_goals:
                 color = (155, 0, 0) if idx==self._curr_goal else (255, 0, 0)
                 pygame.draw.rect(
                     canvas,
