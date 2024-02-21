@@ -248,6 +248,30 @@ class HBC:
         actions, _ = self.policy_lo.policy.predict(lo_input)
         return actions, state
 
+    def save(self):
+        policy_lo_state = self.policy_lo.policy.state_dict()
+        policy_hi_state = self.policy_hi.policy.state_dict()
+        path = os.path.join(self._logger.dir, 'model_params.tar')
+        torch.save({
+            'policy_lo_state': policy_lo_state,
+            'policy_hi_state': policy_hi_state
+            }, path)
+
+    def load(self, path):
+        model_state_dict = torch.load(path)
+        self.policy_lo.policy.load_state_dict(model_state_dict['policy_lo_state'])
+        self.policy_hi.policy.load_state_dict(model_state_dict['policy_hi_state'])
+
+    def save_config(self):
+        # TODO: Finish function.
+        save_dict = {
+            'size': self.env.size,
+            'n_targets': self.env.n_targets,
+            'allow_variable_horizon': self.allow_variable_horizon,
+            'fixed_targets': self.env.fixed_targets
+        }
+        # TODO: Save query type and query params.
+
 
 env_name = "BoxWorld-v0"
 kwargs = {
