@@ -97,11 +97,16 @@ class TransformBoxWorldReward(gym.RewardWrapper, gym.utils.RecordConstructorArgs
         """
         gym.RewardWrapper.__init__(self, env)
 
-    def reset(self, seed=None, options=None):
-        self.visited_goals = []
-        return self.env.reset()
+    # def reset(self, seed=None, options=None):
+    #     self.visited_goals = []
+    #     return self.env.reset()
+    def step(self, action):
+        """Modifies the :attr:`env` :meth:`step` reward using :meth:`self.reward`."""
+        observation, reward, terminated, truncated, info = self.env.step(action)
+        observation, reward = self.reward(observation, reward)
+        return observation, reward, terminated, truncated, info
 
-    def reward(self, reward):
+    def reward(self, observation, reward):
         """Transforms the reward using callable :attr:`f`.
 
         Args:
@@ -111,13 +116,16 @@ class TransformBoxWorldReward(gym.RewardWrapper, gym.utils.RecordConstructorArgs
             The transformed reward
         """
         
-        agent_location = self.env.unwrapped.occupied_grids[0]
+        agent_location = self.unwrapped.occupied_grids[0]
         targets = self.env.unwrapped.occupied_grids[1:]
-        for target in targets:
-            if target not in self.visited_goals and self.env.unwrapped.target_achieved(
+        for idx, target in enumerate(targets):
+            if idx not in self.unwrapped._visited_goals and self.unwrapped.target_achieved(
                 agent_location,
                 target
             ):
-                self.visited_goals.append(target)
-                return 50
-        return reward
+                self.unwrapped._visited_goals.append(idx)
+
+                pos = (self.unwrapped.n_targets+1)* 2 + idx
+                observation[pos] = 0
+                return observation, 50
+        return observation, reward
