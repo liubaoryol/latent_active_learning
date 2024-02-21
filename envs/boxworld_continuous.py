@@ -34,11 +34,13 @@ class BoxWorldContinuousEnv(gym.Env):
         #         "target": spaces.Box(0, size - 1, shape=(2,), dtype=int),
         #     }
         # )
-        obs_shape = 2*(n_targets + 1) + 1
-        highs = [ size ] * obs_shape
-        highs[-1] = n_targets - 1
+        obs_shape = 2*(n_targets + 1)
 
-        self.observation_space = spaces.Box(0, np.array(highs), shape=(obs_shape,))
+        highs = [ size ] * obs_shape
+        highs += [ 1 ] * n_targets
+        highs.append(n_targets - 1)
+
+        self.observation_space = spaces.Box(0, np.array(highs), shape=(obs_shape + n_targets + 1,))
 
         # We have 4 actions, corresponding to "right", "up", "left", "down", "right"
         self.action_space = spaces.Box(-1, 1, shape=(1,))
@@ -64,8 +66,9 @@ class BoxWorldContinuousEnv(gym.Env):
         self.clock = None
 
     def _get_obs(self):
-        obs = np.concatenate(self.occupied_grids)
+        visited = [0 if t in self.visited_goals else 1 for t in range(self.n_targets)]
 
+        obs = np.concatenate(self.occupied_grids)
         obs = np.append(obs, self._curr_goal)
         return obs.astype(np.float32)
 
@@ -91,7 +94,7 @@ class BoxWorldContinuousEnv(gym.Env):
 
         self.occupied_grids = np.empty((self.n_targets + 1, 2), dtype=np.float32)
         self._elapsed_steps = 0
-        self._visited_goals = []
+        self.visited_goals = []
         self._curr_goal = self.sample_next_goal()
 
         if targets is not None:
@@ -140,7 +143,7 @@ class BoxWorldContinuousEnv(gym.Env):
             reward = 0
         else:
 
-            if len(self._visited_goals) == self.n_targets:
+            if len(self.visited_goals) == self.n_targets:
                 raise ValueError("All targets have been visited. Call `reset()` function")
 
             reward = -1
@@ -156,9 +159,9 @@ class BoxWorldContinuousEnv(gym.Env):
             curr_target = self.occupied_grids[self._curr_goal + 1]
 
             if self.target_achieved(agent_location, curr_target):
-                self._visited_goals.append(self._curr_goal)
+                self.visited_goals.append(self._curr_goal)
                 reward = 50
-                if len(self._visited_goals) == self.n_targets:
+                if len(self.visited_goals) == self.n_targets:
                     if self.allow_variable_horizon:
                         terminated = True
                     else:
@@ -188,7 +191,7 @@ class BoxWorldContinuousEnv(gym.Env):
 
     def sample_next_goal(self):
         targets = list(range(self.n_targets))
-        for visited in self._visited_goals:
+        for visited in self.visited_goals:
             targets.remove(visited)
         m = len(targets)
         # if m > 0
@@ -216,7 +219,7 @@ class BoxWorldContinuousEnv(gym.Env):
         agent_location = self.occupied_grids[0]
         targets = self.occupied_grids[1:]
         for idx, target_location in enumerate(targets):
-            if idx not in self._visited_goals:
+            if idx not in self.visited_goals:
                 color = (155, 0, 0) if idx==self._curr_goal else (255, 0, 0)
                 pygame.draw.rect(
                     canvas,

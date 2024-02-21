@@ -30,11 +30,14 @@ class BoxWorldEnv(gym.Env):
         #         "target": spaces.Box(0, size - 1, shape=(2,), dtype=int),
         #     }
         # )
-        obs_shape = 2*(n_targets + 1) + 1
-        highs = [ size - 1 ] * obs_shape 
-        highs[-1] = n_targets - 1
 
-        self.observation_space = spaces.Box(0, np.array(highs), shape=(obs_shape,), dtype=int)
+        obs_shape = 2*(n_targets + 1)
+        
+        highs = [ size-1 ] * obs_shape
+        highs += [ 1 ] * n_targets
+        highs.append(n_targets - 1)
+
+        self.observation_space = spaces.Box(0, np.array(highs), shape=(obs_shape + n_targets + 1,), dtype=int)
 
         # We have 4 actions, corresponding to "right", "up", "left", "down", "right"
         self.action_space = spaces.Discrete(4)
@@ -65,9 +68,11 @@ class BoxWorldEnv(gym.Env):
         self.clock = None
 
     def _get_obs(self):
-        obs = np.concatenate(self.occupied_grids)
+        visited = [0 if t in self.visited_goals else 1 for t in range(self.n_targets)]
 
-        obs = np.append(obs, self._curr_goal)
+        obs = np.concatenate(self.occupied_grids)
+        obs = np.concatenate([obs, visited, [self._curr_goal]])
+
         return obs
 
     # def _get_info(self):
@@ -109,7 +114,6 @@ class BoxWorldEnv(gym.Env):
                         0, self.size, size=2, dtype=int
                     )
                 self.occupied_grids[element] = target_location
-            self.fixed_targets = self.occupied_grids[1:]
 
         # Choose the agent's location uniformly at random
         agent_location = self.np_random.integers(0, self.size, size=2)
