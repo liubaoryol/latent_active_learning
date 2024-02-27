@@ -11,7 +11,7 @@ from latent_active_learning.collect import get_expert_trajectories
 from latent_active_learning.collect import get_environment
 
 
-def get_env_rollouts(env_name, size, n_targets, fixed_targets):
+def get_env_rollouts(env_name, full_obs, size, n_targets, fixed_targets):
     kwargs = {
         'size': size,
         'n_targets': n_targets,
@@ -20,12 +20,12 @@ def get_env_rollouts(env_name, size, n_targets, fixed_targets):
     }
     # Here assume full observability.
     rollouts = get_expert_trajectories(env_name=env_name,
-                                       full_obs=True,
+                                       full_obs=full_obs,
                                        kwargs=kwargs,
                                        n_demo=500)
     transitions = rollout.flatten_trajectories(rollouts)
     env = get_environment(env_name=env_name,
-                        full_obs=True,
+                        full_obs=full_obs,
                         n_envs=1,
                         kwargs=kwargs)
     print(
@@ -54,11 +54,17 @@ def set_logger(exp_identifier):
 
 # Supervised case
 env_name = "BoxWorld-v0"
+kwargs = {
+    'size': 5,
+    'n_targets': 2,
+    # 'allow_variable_horizon': True,
+    'fixed_targets': [[0,0],[4,4]]#, [0,4],]# [9,0],[0,9],[9,9]]
+    }
+
 env, rollouts, transitions = get_env_rollouts(
     env_name=env_name,
-    size=5,
-    n_targets=2,
-    fixed_targets=[[0,0],[4,4]]
+    full_obs=True,
+    **kwargs
 )
 
 new_logger = set_logger('bc-supervised')
@@ -67,10 +73,50 @@ bc_trainer = bc.BC(
     action_space=env.action_space,
     demonstrations=transitions,
     rng=np.random.default_rng(0),
-    custom_logger=new_logger
+    custom_logger=new_logger,
+    device='cpu'
 )
 
 reward_before_training, std_before_training = evaluate_policy(bc_trainer.policy, env, 10)
 bc_trainer.train(n_epochs=1)
 reward_after_training, std_after_training = evaluate_policy(bc_trainer.policy, env, 10)
 print(f"Reward after training: {reward_after_training}")
+
+# UNSUPERVISED BC
+
+env, rollouts, transitions = get_env_rollouts(
+    env_name=env_name,
+    full_obs=False,
+    **kwargs
+)
+
+bc_trainer = bc.BC(
+    observation_space=env.observation_space,
+    action_space=env.action_space,
+    demonstrations=transitions,
+    rng=np.random.default_rng(0),
+    custom_logger=new_logger,
+    device='cpu'
+)
+
+reward_before_training, std_before_training = evaluate_policy(bc_trainer.policy, env, 10)
+bc_trainer.train(n_epochs=1)
+reward_after_training, std_after_training = evaluate_policy(bc_trainer.policy, env, 10)
+print(f"Reward after training: {reward_after_training}")
+
+# CHECK HOW BC WORKS WITH THE OPTIONS ESTIMATED BY AN UNINITIALIZED HBC
+from latent_active_learning.hbc import HBC
+from latent_active_learning.wrappers.latent_wrapper import FilterLatent
+
+
+hbc = HBC(
+    rollouts,
+    options=None,
+    option_dim=2,
+    device='cpu',
+    env=env.envs[0],
+    exp_identifier='Nothing',
+    query_percent=0
+    )
+
+options = hbc.viterbi_list(rollouts)
