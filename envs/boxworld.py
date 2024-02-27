@@ -13,7 +13,7 @@ class BoxWorldEnv(gym.Env):
                  fixed_targets=None):
         self.size = size  # The size of the square grid
         self.window_size = 512  # The size of the PyGame window
-        self._max_episode_steps = 2 * size**2
+        self._max_episode_steps = n_targets * size**2
 
         self.n_targets = n_targets
         self.fixed_targets=fixed_targets

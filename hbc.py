@@ -81,7 +81,7 @@ class HBC:
         N = len(self.expert_demos)
         queries = []
         for i in range(N):
-            M = len(self.options[i])
+            M = len(self.expert_demos[i])
             query = -np.ones(M+1)
             for j in range(M):
                 if np.random.uniform() <= self.query_percent:
@@ -95,6 +95,7 @@ class HBC:
                 f = lambda x: np.linalg.norm(
                     (options[x].squeeze()[1:] - self.options[x]), 1)/len(self.options[x])
                 distances = list(map(f, range(len(options))))
+
             self._logger.record("hbc/0-1distance", np.mean(distances))
             mean_return, std_return = evaluate_policy(self, TransformBoxWorldReward(self.env), 10)
             self._logger.record("hbc/mean_return", mean_return)
@@ -143,6 +144,9 @@ class HBC:
 
     def viterbi_list(self, expert_demos, queries=None):
         options = []
+        if queries is None:
+            queries = [None for _ in range(len(expert_demos))]
+            
         for demo, query in zip(expert_demos, queries):
             options.append(self.viterbi(demo, query)[0])
         return options
@@ -191,9 +195,7 @@ class HBC:
 
     def log_prob_option(
         self,
-        states: np.ndarray,
-        options: Optional[np.ndarray]=None,
-        options_1: Optional[np.ndarray]=None):
+        states: np.ndarray):
 
         states = obs_as_tensor(states, self.device)
 
@@ -276,14 +278,17 @@ class HBC:
 
 env_name = "BoxWorld-v0"
 kwargs = {
-    'size': 5,
-    'n_targets': 3,
+    'size': 10,
+    'n_targets':6,
     'allow_variable_horizon': True,
-    'fixed_targets': [[0,0],[4,4], [0,4],]# [9,0],[0,9],[9,9]]
+    # 'fixed_targets': [[0,0],[4,4]] # NOTE: for 2 targets
+    # 'fixed_targets': [[0,0],[4,4], [0,4]] # NOTE: for 3 targets
+    # 'fixed_targets': [[0,0], [9,0] ,[0,9],[9,9]] # NOTE: FOR 4 targets. Remember to change size to 10
+    'fixed_targets': [[0,0],[4,4], [0,4], [9,0], [0,9],[9,9]] # NOTE: for 6 targets. Remember to change size to 10
     }
 from latent_active_learning.collect import train_expert
 try:
-    train_expert(env_name, kwargs, n_epoch=1e6)
+    train_expert(env_name, kwargs, n_epoch=0.3e6)
 except AssertionError:
     pass
 
@@ -297,12 +302,12 @@ env = gym.make("BoxWorld-v0", **kwargs)
 hbc = HBC(
     rollouts,
     options,
-    option_dim=3,
+    option_dim=4,
     device='cpu',
     env=FilterLatent(env, [-1]),
-    exp_identifier='hbc-0percent-improved-return',
+    exp_identifier='DEBUG-0percent',
     query_percent=0
     )
 
-hbc.train(30)
+# hbc.train(30)
 
