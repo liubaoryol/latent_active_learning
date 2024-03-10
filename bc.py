@@ -38,7 +38,7 @@ def get_env_rollouts(env_name, full_obs, size, n_targets, fixed_targets):
 
 
 def set_logger(exp_identifier):
-    CURR_DIR = "/home/liubove/Documents/my-packages/latent_active_learning/"
+    CURR_DIR = os.getcwd()
     timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
     logging_dir = os.path.join(

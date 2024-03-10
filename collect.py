@@ -47,11 +47,11 @@ def get_environment(
     return vec_env
 
 
-def filter_intent_TrajsWRewards(rollouts):
+def filter_TrajsWRewards(rollouts, filter_until=-1):
     rollouts_filtered = []
     for rollout in rollouts:
         filtered = imitation.data.types.TrajectoryWithRew(
-            obs = rollout.obs[:,:-1],
+            obs = rollout.obs[:,:filter_until],
             acts = rollout.acts,
             infos = rollout.infos,
             terminal = rollout.terminal,

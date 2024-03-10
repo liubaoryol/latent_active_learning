@@ -124,8 +124,8 @@ class TransformBoxWorldReward(gym.RewardWrapper, gym.utils.RecordConstructorArgs
                 target
             ):
                 self.unwrapped._visited_goals.append(idx)
-
                 pos = (self.unwrapped.n_targets+1)* 2 + idx
-                observation[pos] = 0
+                if pos < len(observation):
+                    observation[pos] = 0
                 return observation, 50
         return observation, reward
