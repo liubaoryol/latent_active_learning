@@ -1,7 +1,6 @@
 import torch
 import os
 import numpy as np
-import gymnasium as gym
 from gymnasium import spaces
 from datetime import datetime
 from stable_baselines3.common.evaluation import evaluate_policy
@@ -12,15 +11,10 @@ from wandb.integration.sb3 import WandbCallback
 import imitation
 from imitation.algorithms import bc
 from imitation.data import rollout
-from imitation.util.util import make_vec_env
 from imitation.util import logger as imit_logger
 
-from latent_active_learning.collect import get_expert_trajectories
-from latent_active_learning.collect import get_environment
-from latent_active_learning.collect import filter_TrajsWRewards
-from latent_active_learning.wrappers.latent_wrapper import TransformBoxWorldReward, FilterLatent
-from latent_active_learning.collect import train_expert
 from latent_active_learning.data.types import TrajectoryWithLatent
+from latent_active_learning.wrappers.latent_wrapper import TransformBoxWorldReward
 
 CURR_DIR = os.getcwd()
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
@@ -28,19 +22,16 @@ timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
 class HBC:
     def __init__(self,
-                 expert_demos: List[TrajectoryWithLatent],
                  option_dim: int,
                  device: str,
                  env,
                  exp_identifier='hbc',
-                 query_percent=1,
+                 curious_student=None,
                  results_dir='results'
                  ):
-
-        self.expert_demos = expert_demos
         self.device = device
         self.option_dim = option_dim
-        self.query_percent = query_percent
+        self.curious_student = curious_student
         self.env = env
         boxworld_params = f'size{env.size}-targets{env.n_targets}'
         logging_dir = os.path.join(
@@ -72,24 +63,28 @@ class HBC:
             device=device
         )
         self._logger = self.policy_lo._logger
-    
+        TrajectoryWithLatent.set_policy(self.policy_lo, self.policy_hi)
+
 
     def train(self, n_epochs):
-        N = len(self.expert_demos)
+        self.curious_student.query_oracle()
 
         for _ in range(n_epochs):
             with torch.no_grad():
-                options = self.expert_demos.latent
+                options = [demo.latent for demo in self.curious_student.demos]
                 f = lambda x: np.linalg.norm(
-                    (options[x].squeeze()[1:] - self.options[x]), 0)/len(self.options[x])
+                    (options[x].squeeze()[1:] - self.curious_student.oracle.true_options[x]), 0)/len(options[x])
                 distances = list(map(f, range(len(options))))
 
             self._logger.record("hbc/0-1distance", np.mean(distances))
             mean_return, std_return = evaluate_policy(self, TransformBoxWorldReward(self.env), 10)
             self._logger.record("hbc/mean_return", mean_return)
             self._logger.record("hbc/std_return", std_return)
+            self._logger.last_mean = mean_return
+            self._logger.last_std = std_return
+            self._logger.last_01_distance = np.mean(distances)
             
-            transitions_lo, transitions_hi = self.transitions(self.expert_demos)
+            transitions_lo, transitions_hi = self.transitions(self.curious_student.demos)
             self.policy_lo.set_demonstrations(transitions_lo)
             self.policy_lo.train(n_epochs=1)
             self.policy_hi.set_demonstrations(transitions_hi)
@@ -120,7 +115,6 @@ class HBC:
         transitions_lo = rollout.flatten_trajectories(expert_lo)
 
         return transitions_lo, transitions_hi
-
 
     def predict(
         self,
@@ -163,49 +157,3 @@ class HBC:
             'fixed_targets': self.env.fixed_targets
         }
         # TODO: Save query type and query params.
-
-
-
-env_name = "BoxWorld-v0"
-n_targets = 3
-target_selection = lambda x: 0
-kwargs = {
-    'size': 10,
-    'n_targets': n_targets,
-    'allow_variable_horizon': True,
-    # 'fixed_targets': [[0,0],[4,4]] # NOTE: for 2 targets
-    # 'fixed_targets': [[0,0],[4,4], [0,4]] # NOTE: for 3 targets
-    # 'fixed_targets': [[0,0], [9,0] ,[0,9],[9,9]] # NOTE: FOR 4 targets. Remember to change size to 10
-    # 'fixed_targets': [[0,0],[4,4], [0,4], [9,0], [0,9],[9,9]], # NOTE: for 6 targets. Remember to change size to 10
-    'fixed_targets': None,
-    'latent_distribution': target_selection
-    }
-try:
-    train_expert(env_name, kwargs, n_epoch=1e6)
-except AssertionError:
-    pass
-
-rollouts2 = get_expert_trajectories(env_name=env_name,
-                                    full_obs=True,
-                                    kwargs=kwargs,
-                                    n_demo=500) #[[0,0], [4,4]])
-filter_until = -1 - n_targets
-rollouts = filter_TrajsWRewards(rollouts2, filter_until)
-options = [roll.obs[:,-1] for roll in rollouts2]
-env = gym.make("BoxWorld-v0", **kwargs)
-
-
-hbc = HBC(
-    rollouts,
-    option_dim=n_targets,
-    device='cpu',
-    env=FilterLatent(env, list(range(filter_until, 0))),
-    exp_identifier='0.5ratio_query',
-    query_percent=0.5,
-    results_dir='results_fixed_order_random_targets'
-    )
-
-hbc.train(30)
-
-
-
