@@ -1,5 +1,5 @@
 import numpy as np
-import torch
+import warnings
 import gymnasium as gym
 import os
 
@@ -61,21 +61,20 @@ def filter_TrajsWRewards(rollouts, filter_until=-1):
     return rollouts_filtered
 
 
-def get_expert_trajectories(
-    env_name,
-    full_obs=True,
-    n_demo=10,
-    seed=42,
-    kwargs: dict=None):
+def get_trajectories(
+        env_name,
+        model,
+        full_obs=True,
+        n_demo=10,
+        seed=42,
+        kwargs: dict=None
+        ):
     vec_env = get_environment(env_name=env_name,
                               full_obs=True,
                               kwargs=kwargs)
 
-    # Load trained policy and get expert trajectories
-    expert_model_dir = get_dir_name(env_name, kwargs)
-    expert = PPO.load(expert_model_dir)
     rollouts = rollout.rollout(
-        expert,
+        model,
         vec_env,
         rollout.make_sample_until(min_episodes=n_demo),
         rng=np.random.default_rng(seed),
@@ -83,24 +82,21 @@ def get_expert_trajectories(
     )
 
     if not full_obs:
-        rollouts = filter_intent_TrajsWRewards(rollouts)
+        rollouts = filter_TrajsWRewards(rollouts)
 
     return rollouts
 
-
-def get_expert(env_name, kwargs):
-    # Load trained policy and get expert trajectories
+def get_expert(env_name, kwargs, n_epoch=1e6):
     expert_dir = get_dir_name(env_name, kwargs)
-    expert = PPO.load(expert_dir)
-
-    return expert
-
-def train_expert(env_name, kwargs, n_epoch=1e6):
-    expert_dir = get_dir_name(env_name, kwargs)
-    assert not os.path.exists(f'{expert_dir}.zip'), 'Expert has already been trained and can be used'
+    if os.path.exists(f'{expert_dir}.zip'):
+        # Load trained policy
+        expert_model_dir = get_dir_name(env_name, kwargs)
+        expert = PPO.load(expert_model_dir)
+        return expert
+    
+    warnings.warn("Expert has not been trained on this environment. Training an expert...")
     vec_env = get_environment(env_name, full_obs=True, kwargs=kwargs)
-
     model = PPO("MlpPolicy", vec_env, verbose=1)
     model.learn(total_timesteps=n_epoch, progress_bar=True)
-
     model.save(expert_dir)
+    return model
