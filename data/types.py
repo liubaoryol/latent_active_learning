@@ -3,11 +3,11 @@ import torch
 import numpy as np
 
 from stable_baselines3.common.utils import obs_as_tensor
-from imitation.data.types import Trajectory
+from imitation.data.types import TrajectoryWithRew
 
 
 @dataclasses.dataclass(frozen=True)
-class TrajectoryWithLatent(Trajectory):
+class TrajectoryWithLatent(TrajectoryWithRew):
     """A batch of obs-act-lat-is_estimated-info-done transitions.
     
     This class has a 'global policy' that will be used for estimating
@@ -25,17 +25,24 @@ class TrajectoryWithLatent(Trajectory):
     agent has taken action `acts[i]`.
     """
     @classmethod
-    def set_policy(cls, policy_lo, policy_hi, option_dim):
+    def set_policy(cls, policy_lo, policy_hi):
         cls._policy_lo = policy_lo.policy
         cls._policy_hi = policy_hi.policy
-        cls._option_dim = option_dim
         cls._device = cls._policy_lo.device
+    
+    @classmethod
+    def set_option_dim(cls, option_dim):
+        cls.option_dim = option_dim
 
     def __post_init__(self):
         """Performs input validation, including for rews."""
         super().__post_init__()
-        object.__setattr__(self, '_is_latent_estimated', np.zeros(len(self.obs)))
-        object.__setattr__(self, '_latent', np.empty(len(self.obs)))
+        object.__setattr__(self,
+                           '_is_latent_estimated',
+                           np.concatenate(
+                               [[1], np.zeros(len(self.obs), dtype=int)]
+                               ))
+        object.__setattr__(self, '_latent', -np.ones(len(self.obs) + 1, dtype=int))
         object.__setattr__(self, '_N', len(self.obs))
     
     @property
@@ -48,9 +55,9 @@ class TrajectoryWithLatent(Trajectory):
         """Set true latent, returns boolean variable indicating completion
         
         Returns True if setting was possible, False if it was set up already."""
-        if not self._is_latent_estimated[idx]:
-            self._latent[idx] = value
-            self._is_latent_estimated[idx] = 1
+        if not self._is_latent_estimated[idx+1]:
+            self._latent[idx + 1] = value
+            self._is_latent_estimated[idx + 1] = 1
             return True
         return False
     
@@ -62,7 +69,7 @@ class TrajectoryWithLatent(Trajectory):
         actions = obs_as_tensor(self.acts, self._device)
         results = []
         for o in range(self.option_dim):
-            input_o = torch.concat([states, torch.ones([self._N,1])*o], axis=1)
+            input_o = torch.concat([states, torch.ones([self._N-1,1])*o], axis=1)
             log_prob=self._policy_lo.get_distribution(input_o).log_prob(actions)
             results.append(log_prob)
         return torch.stack(results, axis=1)
@@ -107,3 +114,10 @@ class TrajectoryWithLatent(Trajectory):
             for i in range(self._N, 1, -1):
                 c_array[i-1] = max_path[i-1][c_array[i]]
         return c_array.detach().numpy()
+
+    def __eq__(self, other:TrajectoryWithRew):
+        return (other.obs == self.obs and  
+                other.acts == self.acts and
+                other.infos == self.infos and
+                other.rews == self.rews and
+                other.terminal == self.terminal)
