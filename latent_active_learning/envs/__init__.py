@@ -1,0 +1,2 @@
+from latent_active_learning.envs.boxworld import BoxWorldEnv
+from latent_active_learning.envs.boxworld_continuous import BoxWorldContinuousEnv
