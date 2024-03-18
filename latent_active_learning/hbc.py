@@ -2,6 +2,7 @@ import torch
 import os
 import numpy as np
 from gymnasium import spaces
+from stable_baselines3.common.monitor import Monitor
 from datetime import datetime
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.utils import obs_as_tensor
@@ -18,7 +19,63 @@ from latent_active_learning.wrappers.latent_wrapper import TransformBoxWorldRewa
 
 CURR_DIR = os.getcwd()
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
-   
+
+
+class HBCLoggerPartial(bc.BCLogger):
+    def __init__(self, logger, lo: bool):
+        super().__init__(logger)
+        self.part = 'lo' if lo else 'hi'
+
+    def log_batch(
+        self,
+        batch_num: int,
+        batch_size: int,
+        num_samples_so_far: int,
+        training_metrics,
+        rollout_stats,
+    ):
+        for k, v in training_metrics.__dict__.items():
+            self._logger.record(f"bc_{self.part}/{k}", float(v) if v is not None else None)
+
+
+class HBCLogger:
+    """Utility class to help logging information relevant to Behavior Cloning."""
+
+    def __init__(self, logger: imit_logger.HierarchicalLogger):
+        """Create new BC logger.
+
+        Args:
+            logger: The logger to feed all the information to.
+        """
+        self._logger = logger
+        self._tensorboard_step = 0
+        self._current_epoch = 0
+        self._logger_lo = HBCLoggerPartial(logger, lo=True)
+        self._logger_hi = HBCLoggerPartial(logger, lo=False)
+
+    def reset_tensorboard_steps(self):
+        self._tensorboard_step = 0
+
+    def log_batch(
+        self,
+        epoch_num: int,
+        hamming_loss: int,
+        rollout_mean: int,
+        rollout_std: int
+    ):
+        self._logger.record("epoch", epoch_num)
+        self._logger.record("hbc/hamming_loss", hamming_loss)
+        self._logger.record("hbc/rollout_mean", rollout_mean)
+        self._logger.record("hbc/rollout_std", rollout_std)
+
+        self._logger.dump(self._tensorboard_step)
+        self._tensorboard_step += 1
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state["_logger"]
+        return state
+
 
 class HBC:
     def __init__(self,
@@ -32,7 +89,7 @@ class HBC:
         self.device = device
         self.option_dim = option_dim
         self.curious_student = curious_student
-        self.env = env
+        self.env = Monitor(env)
         boxworld_params = f'size{env.size}-targets{env.n_targets}'
         logging_dir = os.path.join(
             CURR_DIR,
@@ -43,6 +100,8 @@ class HBC:
                                            ["stdout", "csv", "tensorboard"]
                                            )
 
+        self._logger = HBCLogger(new_logger)
+
         obs_space = env.observation_space
         new_lo = np.concatenate([obs_space.low, [0]])
         new_hi = np.concatenate([obs_space.high, [option_dim]])
@@ -52,9 +111,9 @@ class HBC:
             observation_space=spaces.Box(low=new_lo, high=new_hi),
             action_space=env.action_space, # Check as sometimes it's continuosu
             rng=rng,
-            device=device,
-            custom_logger=new_logger
+            device=device
         )
+        self.policy_lo._bc_logger = self._logger._logger_lo
         new_lo[-1] = -1
         self.policy_hi = bc.BC(
             observation_space=spaces.Box(low=new_lo, high=new_hi),
@@ -62,24 +121,27 @@ class HBC:
             rng=rng,
             device=device
         )
-        self._logger = self.policy_lo._logger
+        self.policy_hi._bc_logger = self._logger._logger_hi
         TrajectoryWithLatent.set_policy(self.policy_lo, self.policy_hi)
 
 
     def train(self, n_epochs):
         self.curious_student.query_oracle()
 
-        for _ in range(n_epochs):
+        for epoch in range(n_epochs):
             with torch.no_grad():
                 options = [demo.latent for demo in self.curious_student.demos]
                 f = lambda x: np.linalg.norm(
                     (options[x].squeeze()[1:] - self.curious_student.oracle.true_options[x]), 0)/len(options[x])
                 distances = list(map(f, range(len(options))))
-
-            self._logger.record("hbc/0-1distance", np.mean(distances))
             mean_return, std_return = evaluate_policy(self, TransformBoxWorldReward(self.env), 10)
-            self._logger.record("hbc/mean_return", mean_return)
-            self._logger.record("hbc/std_return", std_return)
+            self._logger.log_batch(
+                epoch_num=epoch,
+                hamming_loss=np.mean(distances),
+                rollout_mean=mean_return,
+                rollout_std=std_return
+            )
+
             self._logger.last_mean = mean_return
             self._logger.last_std = std_return
             self._logger.last_01_distance = np.mean(distances)
