@@ -22,9 +22,10 @@ timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
 
 class HBCLoggerPartial(bc.BCLogger):
-    def __init__(self, logger, lo: bool):
+    def __init__(self, logger, lo: bool, wandb_run=None):
         super().__init__(logger)
         self.part = 'lo' if lo else 'hi'
+        self.wandb_run = wandb_run
 
     def log_batch(
         self,
@@ -35,13 +36,16 @@ class HBCLoggerPartial(bc.BCLogger):
         rollout_stats,
     ):
         for k, v in training_metrics.__dict__.items():
-            self._logger.record(f"bc_{self.part}/{k}", float(v) if v is not None else None)
-
+            name = f"bc_{self.part}/{k}"
+            value = float(v) if v is not None else None
+            self._logger.record(name, value)
+            if self.wandb_run is not None:
+                self.wandb_run.log({name: value})
 
 class HBCLogger:
     """Utility class to help logging information relevant to Behavior Cloning."""
 
-    def __init__(self, logger: imit_logger.HierarchicalLogger):
+    def __init__(self, logger: imit_logger.HierarchicalLogger, wandb_run=None):
         """Create new BC logger.
 
         Args:
@@ -50,8 +54,13 @@ class HBCLogger:
         self._logger = logger
         self._tensorboard_step = 0
         self._current_epoch = 0
-        self._logger_lo = HBCLoggerPartial(logger, lo=True)
-        self._logger_hi = HBCLoggerPartial(logger, lo=False)
+        self._logger_lo = HBCLoggerPartial(logger,
+                                           lo=True,
+                                           wandb_run=wandb_run)
+        self._logger_hi = HBCLoggerPartial(logger,
+                                           lo=False,
+                                           wandb_run=wandb_run)
+        self.wandb_run = wandb_run
 
     def reset_tensorboard_steps(self):
         self._tensorboard_step = 0
@@ -71,6 +80,14 @@ class HBCLogger:
         self._logger.dump(self._tensorboard_step)
         self._tensorboard_step += 1
 
+        if self.wandb_run is not None:
+            self.wandb_run.log({
+                "epoch": epoch_num,
+                "hbc/hamming_loss": hamming_loss,
+                "hbc/rollout_mean": rollout_mean,
+                "hbc/rollout_std": rollout_std
+            })
+
     def __getstate__(self):
         state = self.__dict__.copy()
         del state["_logger"]
@@ -84,7 +101,8 @@ class HBC:
                  env,
                  exp_identifier='hbc',
                  curious_student=None,
-                 results_dir='results'
+                 results_dir='results',
+                 wandb_run=None
                  ):
         self.device = device
         self.option_dim = option_dim
@@ -100,7 +118,7 @@ class HBC:
                                            ["stdout", "csv", "tensorboard"]
                                            )
 
-        self._logger = HBCLogger(new_logger)
+        self._logger = HBCLogger(new_logger, wandb_run)
 
         obs_space = env.observation_space
         new_lo = np.concatenate([obs_space.low, [0]])
