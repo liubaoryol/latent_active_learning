@@ -52,3 +52,21 @@ class Random(CuriousPupil):
             if np.random.uniform() <= self.query_percent:
                 option = self.oracle.query(idx, j)
                 demo.set_true_latent(j, option)
+
+@dataclasses.dataclass
+class QueryCapLimit(CuriousPupil):
+    query_demo_cap: int = 0
+    
+    def query_oracle(self):
+        """Will query oracle on all trajectories and states at the rate of `query_percent`"""
+        for idx in range(len(self.demos)):
+            self._query_single_demo(idx)
+        self._num_queries += 1
+
+    def _query_single_demo(self, idx):
+        demo = self.demos[idx]
+        n = len(demo.obs)
+        idxs = np.random.choice(range(n), size=min(self.query_demo_cap, n))
+        for j in idxs:
+            option = self.oracle.query(idx, j)
+            demo.set_true_latent(j, option)
