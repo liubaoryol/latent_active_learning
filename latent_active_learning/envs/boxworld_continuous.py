@@ -69,7 +69,7 @@ class BoxWorldContinuousEnv(gym.Env):
         visited = [0 if t in self._visited_goals else 1 for t in range(self.n_targets)]
 
         obs = np.concatenate(self.occupied_grids)
-        obs = np.append(obs, self._curr_goal)
+        obs = np.concatenate([obs, visited, [self._curr_goal]])
         return obs.astype(np.float32)
 
     # def _get_info(self):

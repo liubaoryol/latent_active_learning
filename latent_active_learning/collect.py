@@ -12,7 +12,7 @@ import imitation
 
 
 def get_dir_name(env_name, kwargs):
-    experts_path = 'latent_active_learning/expert_params/'
+    experts_path = 'expert_params/'
     size = kwargs['size']
     n_targs = kwargs['n_targets']
     fixed = 'fixed' if kwargs['fixed_targets'] is not None else ''
