@@ -3,34 +3,13 @@ import gymnasium as gym
 from stable_baselines3.common.monitor import Monitor
 
 from latent_active_learning.scripts.config.train_hbc import train_hbc_ex
-from latent_active_learning.collect import get_trajectories
-from latent_active_learning.collect import filter_TrajsWRewards
-from latent_active_learning.collect import get_expert
+from latent_active_learning.scripts.utils import get_demos
 from latent_active_learning.wrappers.latent_wrapper import FilterLatent
 from latent_active_learning.hbc import HBC
 from latent_active_learning.oracle import Random, Oracle, QueryCapLimit
 
 
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
-
-
-@train_hbc_ex.capture
-def get_demos(env_name, filter_state_until, kwargs):
-    '''Get clean rollouts and corresponding of simple BoxWorld'''
-    expert = get_expert(env_name, kwargs)
-
-    rollouts_full = get_trajectories(
-        env_name=env_name,
-        model=expert,
-        kwargs=kwargs,
-        n_demo=500
-        )
-
-    rollouts = filter_TrajsWRewards(rollouts_full, filter_state_until)
-    options = [roll.obs[:,-1] for roll in rollouts_full]
-
-    return rollouts, options
-
 
 @train_hbc_ex.automain
 def main(_config,

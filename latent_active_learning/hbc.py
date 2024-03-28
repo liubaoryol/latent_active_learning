@@ -1,13 +1,12 @@
 import torch
 import os
+from datetime import datetime
+from typing import Union, Tuple, Dict, Optional
 import numpy as np
 from gymnasium import spaces
 from stable_baselines3.common.monitor import Monitor
-from datetime import datetime
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.utils import obs_as_tensor
-from typing import List, Union, Tuple, Dict, Optional
-from wandb.integration.sb3 import WandbCallback
 
 import imitation
 from imitation.algorithms import bc

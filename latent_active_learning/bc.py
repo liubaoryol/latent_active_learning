@@ -1,41 +1,18 @@
 import os
 from datetime import datetime
 import numpy as np
-from stable_baselines3.common.evaluation import evaluate_policy
+import gymnasium as gym
+from stable_baselines3.common.monitor import Monitor
 
+import imitation
 from imitation.algorithms import bc
-from imitation.util import logger as imit_logger
 from imitation.data import rollout
+from imitation.util import logger as imit_logger
+from latent_active_learning.scripts.utils import get_demos
+from latent_active_learning.scripts.config.train_hbc import train_hbc_ex
 
-from latent_active_learning.collect import get_expert_trajectories
-from latent_active_learning.collect import get_environment
 
-
-def get_env_rollouts(env_name, full_obs, size, n_targets, fixed_targets):
-    kwargs = {
-        'size': size,
-        'n_targets': n_targets,
-        'allow_variable_horizon': True,
-        'fixed_targets': fixed_targets
-    }
-    # Here assume full observability.
-    rollouts = get_expert_trajectories(env_name=env_name,
-                                       full_obs=full_obs,
-                                       kwargs=kwargs,
-                                       n_demo=500)
-    transitions = rollout.flatten_trajectories(rollouts)
-    env = get_environment(env_name=env_name,
-                        full_obs=full_obs,
-                        n_envs=1,
-                        kwargs=kwargs)
-    print(
-        f"""The `rollout` function generated a list of {len(rollouts)} {type(rollouts[0])}.
-    After flattening, this list is turned into a {type(transitions)} object containing {len(transitions)} transitions.
-    The transitions object contains arrays for: {', '.join(transitions.__dict__.keys())}."
-    """
-    )
-    return env, rollouts, transitions
-
+timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
 def set_logger(exp_identifier):
     CURR_DIR = os.getcwd()
@@ -47,76 +24,70 @@ def set_logger(exp_identifier):
         )
     logger = imit_logger.configure(
         logging_dir,
-        ["stdout", "csv", "tensorboard"]
+        ["stdout", "csv", "tensorboard", "wandb"]
         )
     return logger
 
 
-# Supervised case
-env_name = "BoxWorld-v0"
-kwargs = {
-    'size': 5,
-    'n_targets': 2,
-    # 'allow_variable_horizon': True,
-    'fixed_targets': [[0,0],[4,4]]#, [0,4],]# [9,0],[0,9],[9,9]]
-    }
-
-env, rollouts, transitions = get_env_rollouts(
-    env_name=env_name,
-    full_obs=True,
-    **kwargs
-)
-
-new_logger = set_logger('bc-supervised')
-bc_trainer = bc.BC(
-    observation_space=env.observation_space,
-    action_space=env.action_space,
-    demonstrations=transitions,
-    rng=np.random.default_rng(0),
-    custom_logger=new_logger,
-    device='cpu'
-)
-
-reward_before_training, std_before_training = evaluate_policy(bc_trainer.policy, env, 10)
-bc_trainer.train(n_epochs=1)
-reward_after_training, std_after_training = evaluate_policy(bc_trainer.policy, env, 10)
-print(f"Reward after training: {reward_after_training}")
-
-# UNSUPERVISED BC
-
-env, rollouts, transitions = get_env_rollouts(
-    env_name=env_name,
-    full_obs=False,
-    **kwargs
-)
-
-bc_trainer = bc.BC(
-    observation_space=env.observation_space,
-    action_space=env.action_space,
-    demonstrations=transitions,
-    rng=np.random.default_rng(0),
-    custom_logger=new_logger,
-    device='cpu'
-)
-
-reward_before_training, std_before_training = evaluate_policy(bc_trainer.policy, env, 10)
-bc_trainer.train(n_epochs=1)
-reward_after_training, std_after_training = evaluate_policy(bc_trainer.policy, env, 10)
-print(f"Reward after training: {reward_after_training}")
-
+# Supervised case == query_percent = 1
+# UNSUPERVISED BC == query_percent = 0
 # CHECK HOW BC WORKS WITH THE OPTIONS ESTIMATED BY AN UNINITIALIZED HBC
-from latent_active_learning.hbc import HBC
-from latent_active_learning.wrappers.latent_wrapper import FilterLatent
 
 
-hbc = HBC(
-    rollouts,
-    options=None,
-    option_dim=2,
-    device='cpu',
-    env=env.envs[0],
-    exp_identifier='Nothing',
-    query_percent=0
+@train_hbc_ex.automain
+def main(_config,
+         env_name,
+         n_targets,
+         filter_state_until,
+         kwargs,
+         n_epochs,
+         use_wandb,
+         query_percent):
+    
+    assert query_percent in [0, 1], '`query_percent` must equal either 0 or 1'
+
+    # if use_wandb:
+    #     import wandb
+    #     run = wandb.init(
+    #         project=f'{env_name[:-3]}-size{kwargs["size"]}-targets{n_targets}',
+    #         name='BehavioralCloning_{}{}_{}'.format(
+    #             'queryCap' if query_cap is not None else 'queryPercent',
+    #             query_cap if query_cap is not None else query_percent,
+    #             timestamp()
+    #         ),
+    #         tags=['bc'],
+    #         config=_config,
+    #         monitor_gym=True, # NOTE: had to make changes to an __init__ file to make this work. I'm not sure if it will work
+    #         save_code=True
+    #     )
+    # else:
+    #     run = None
+    
+    rollouts, options = get_demos()
+
+    if query_percent:
+        for idx, demo in enumerate(rollouts):
+            rollouts[idx] = imitation.data.types.TrajectoryWithRew(
+                obs = np.concatenate(
+                    [demo.obs, np.expand_dims(options[idx], 1)], 1),
+                acts = demo.acts,
+                infos = demo.infos,
+                terminal = demo.terminal,
+                rews = demo.rews
+            )
+
+    env = gym.make(env_name, **kwargs)
+    env = Monitor(env)
+
+    transitions = rollout.flatten_trajectories(rollouts)
+
+    new_logger = set_logger('bc-supervised')
+    bc_trainer = bc.BC(
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        demonstrations=transitions,
+        rng=np.random.default_rng(0),
+        custom_logger=new_logger,
+        device='cpu'
     )
-
-options = hbc.viterbi_list(rollouts)
+    bc_trainer.train(n_epochs=n_epochs)
