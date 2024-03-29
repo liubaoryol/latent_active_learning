@@ -49,13 +49,13 @@ def get_environment(
 
 def filter_TrajsWRewards(rollouts, filter_until=-1):
     rollouts_filtered = []
-    for rollout in rollouts:
+    for roll in rollouts:
         filtered = imitation.data.types.TrajectoryWithRew(
-            obs = rollout.obs[:,:filter_until],
-            acts = rollout.acts,
-            infos = rollout.infos,
-            terminal = rollout.terminal,
-            rews = rollout.rews
+            obs = roll.obs[:,:filter_until],
+            acts = roll.acts,
+            infos = roll.infos,
+            terminal = roll.terminal,
+            rews = roll.rews
         )
         rollouts_filtered.append(filtered)
     return rollouts_filtered

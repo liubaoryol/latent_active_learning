@@ -55,6 +55,7 @@ def main(_config,
 
     env = gym.make(env_name, **kwargs)
     env = Monitor(env)
+    env = FilterLatent(env, list(range(filter_state_until, 0)))
     # env = DummcyVecEnv([])
     # env = VecVideoRecorder(
     #     env,
@@ -66,7 +67,7 @@ def main(_config,
     hbc = HBC(
         option_dim=n_targets,
         device='cpu',
-        env=FilterLatent(env, list(range(filter_state_until, 0))),
+        env=env,
         exp_identifier=str(query_percent) + 'query_ratio',
         curious_student=student,
         results_dir='results_fixed_order_targets',

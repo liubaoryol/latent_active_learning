@@ -72,9 +72,9 @@ class HBCLogger:
         rollout_std: int
     ):
         self._logger.record("epoch", epoch_num)
-        self._logger.record("hbc/hamming_loss", hamming_loss)
-        self._logger.record("hbc/rollout_mean", rollout_mean)
-        self._logger.record("hbc/rollout_std", rollout_std)
+        self._logger.record("env/hamming_loss", hamming_loss)
+        self._logger.record("env/rollout_mean", rollout_mean)
+        self._logger.record("env/rollout_std", rollout_std)
 
         self._logger.dump(self._tensorboard_step)
         self._tensorboard_step += 1
@@ -82,9 +82,9 @@ class HBCLogger:
         if self.wandb_run is not None:
             self.wandb_run.log({
                 "epoch": epoch_num,
-                "hbc/hamming_loss": hamming_loss,
-                "hbc/rollout_mean": rollout_mean,
-                "hbc/rollout_std": rollout_std
+                "env/hamming_loss": hamming_loss,
+                "env/rollout_mean": rollout_mean,
+                "env/rollout_std": rollout_std
             })
 
     def __getstate__(self):
