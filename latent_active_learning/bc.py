@@ -1,93 +1,67 @@
+import torch
 import os
 from datetime import datetime
+from typing import Union, Tuple, Dict, Optional
 import numpy as np
-import gymnasium as gym
+from gymnasium import spaces
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.utils import obs_as_tensor
 
 import imitation
 from imitation.algorithms import bc
 from imitation.data import rollout
 from imitation.util import logger as imit_logger
-from latent_active_learning.scripts.utils import get_demos
-from latent_active_learning.scripts.config.train_hbc import train_hbc_ex
 
+from latent_active_learning.data.types import TrajectoryWithLatent
+from latent_active_learning.wrappers.latent_wrapper import TransformBoxWorldReward
+from latent_active_learning.hbc import HBCLoggerPartial
 
+CURR_DIR = os.getcwd()
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
-def set_logger(exp_identifier):
-    CURR_DIR = os.getcwd()
-    timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
-    logging_dir = os.path.join(
-        CURR_DIR,
-        f'results/{exp_identifier}_{timestamp()}/'
-        )
-    logger = imit_logger.configure(
-        logging_dir,
-        ["stdout", "csv", "tensorboard", "wandb"]
-        )
-    return logger
+class BCLogger:
+    """Utility class to help logging information relevant to Behavior Cloning."""
 
+    def __init__(self, logger: imit_logger.HierarchicalLogger, wandb_run=None):
+        """Create new BC logger.
 
-# Supervised case == query_percent = 1
-# UNSUPERVISED BC == query_percent = 0
-# CHECK HOW BC WORKS WITH THE OPTIONS ESTIMATED BY AN UNINITIALIZED HBC
+        Args:
+            logger: The logger to feed all the information to.
+        """
+        self._logger = logger
+        self._tensorboard_step = 0
+        self._current_epoch = 0
+        self._logger_lo = HBCLoggerPartial(logger,
+                                           lo=True,
+                                           wandb_run=wandb_run)
+        self.wandb_run = wandb_run
 
+    def reset_tensorboard_steps(self):
+        self._tensorboard_step = 0
 
-@train_hbc_ex.automain
-def main(_config,
-         env_name,
-         n_targets,
-         filter_state_until,
-         kwargs,
-         n_epochs,
-         use_wandb,
-         query_percent):
-    
-    assert query_percent in [0, 1], '`query_percent` must equal either 0 or 1'
+    def log_batch(
+        self,
+        epoch_num: int,
+        rollout_mean: int,
+        rollout_std: int
+    ):
+        self._logger.record("epoch", epoch_num)
+        self._logger.record("env/rollout_mean", rollout_mean)
+        self._logger.record("env/rollout_std", rollout_std)
 
-    # if use_wandb:
-    #     import wandb
-    #     run = wandb.init(
-    #         project=f'{env_name[:-3]}-size{kwargs["size"]}-targets{n_targets}',
-    #         name='BehavioralCloning_{}{}_{}'.format(
-    #             'queryCap' if query_cap is not None else 'queryPercent',
-    #             query_cap if query_cap is not None else query_percent,
-    #             timestamp()
-    #         ),
-    #         tags=['bc'],
-    #         config=_config,
-    #         monitor_gym=True, # NOTE: had to make changes to an __init__ file to make this work. I'm not sure if it will work
-    #         save_code=True
-    #     )
-    # else:
-    #     run = None
-    
-    rollouts, options = get_demos()
+        self._logger.dump(self._tensorboard_step)
+        self._tensorboard_step += 1
 
-    if query_percent:
-        for idx, demo in enumerate(rollouts):
-            rollouts[idx] = imitation.data.types.TrajectoryWithRew(
-                obs = np.concatenate(
-                    [demo.obs, np.expand_dims(options[idx], 1)], 1),
-                acts = demo.acts,
-                infos = demo.infos,
-                terminal = demo.terminal,
-                rews = demo.rews
-            )
+        if self.wandb_run is not None:
+            self.wandb_run.log({
+                "epoch": epoch_num,
+                "env/rollout_mean": rollout_mean,
+                "env/rollout_std": rollout_std
+            })
 
-    env = gym.make(env_name, **kwargs)
-    env = Monitor(env)
-
-    transitions = rollout.flatten_trajectories(rollouts)
-
-    new_logger = set_logger('bc-supervised')
-    bc_trainer = bc.BC(
-        observation_space=env.observation_space,
-        action_space=env.action_space,
-        demonstrations=transitions,
-        rng=np.random.default_rng(0),
-        custom_logger=new_logger,
-        device='cpu'
-    )
-    bc_trainer.train(n_epochs=n_epochs)
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        del state["_logger"]
+        return state

@@ -1,3 +1,6 @@
+import numpy as np
+
+import imitation
 from latent_active_learning.scripts.config.train_hbc import train_hbc_ex
 from latent_active_learning.collect import get_trajectories
 from latent_active_learning.collect import filter_TrajsWRewards
@@ -20,3 +23,19 @@ def get_demos(env_name, filter_state_until, kwargs):
     options = [roll.obs[:,-1] for roll in rollouts_full]
 
     return rollouts, options
+
+
+def concat_obslat(rollouts, options):
+    '''Append option to observation'''
+    trajs = []
+    for idx, demo in enumerate(rollouts):
+        tmp = imitation.data.types.TrajectoryWithRew(
+            obs = np.concatenate(
+                [demo.obs, np.expand_dims(options[idx], 1)], 1),
+            acts = demo.acts,
+            infos = demo.infos,
+            terminal = demo.terminal,
+            rews = demo.rews
+        )
+        trajs.append(tmp)
+    return trajs
