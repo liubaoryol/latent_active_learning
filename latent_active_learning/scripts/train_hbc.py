@@ -6,7 +6,7 @@ from latent_active_learning.scripts.config.train_hbc import train_hbc_ex
 from latent_active_learning.scripts.utils import get_demos
 from latent_active_learning.wrappers.latent_wrapper import FilterLatent
 from latent_active_learning.hbc import HBC
-from latent_active_learning.oracle import Random, Oracle, QueryCapLimit
+from latent_active_learning.oracle import Random, Oracle, QueryCapLimit, EfficientStudent
 
 
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
@@ -19,6 +19,7 @@ def main(_config,
          kwargs,
          n_epochs,
          use_wandb,
+         efficient_student=False,
          query_percent=None,
          query_cap=None):
     
@@ -30,10 +31,11 @@ def main(_config,
         import wandb
         run = wandb.init(
             project=f'{env_name[:-3]}-size{kwargs["size"]}-targets{n_targets}',
-            name='HBC_{}{}_{}'.format(
+            name='HBC_{}{}_{}{}'.format(
                 'queryCap' if query_cap is not None else 'queryPercent',
                 query_cap if query_cap is not None else query_percent,
-                timestamp()
+                'efficientStudent' if efficient_student else '',
+                timestamp(),
             ),
             tags=['hbc'],
             config=_config,
@@ -50,12 +52,14 @@ def main(_config,
     else:
         student = QueryCapLimit(rollouts, gini, option_dim=n_targets, query_demo_cap=query_cap)
 
+    if efficient_student:
+        student = EfficientStudent(rollouts, gini, option_dim=n_targets)
     student.query_oracle()
-
 
     env = gym.make(env_name, **kwargs)
     env = Monitor(env)
     env = FilterLatent(env, list(range(filter_state_until, 0)))
+    env.unwrapped._max_episode_steps = kwargs['size']**2
     # env = DummcyVecEnv([])
     # env = VecVideoRecorder(
     #     env,

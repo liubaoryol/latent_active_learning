@@ -70,6 +70,7 @@ def main(_config,
 
     env = gym.make(env_name, **kwargs)
     env = Monitor(env)
+    env.unwrapped._max_episode_steps = kwargs['size']**2
     rollouts, options = get_demos()
 
     if query_percent:

@@ -8,13 +8,19 @@ def discrete_env():
     env_name = "BoxWorld-v0"
     n_epochs = 30
     use_wandb=True
+    efficient_student=False
 
 @train_hbc_ex.named_config
 def continuous_env():
     env_name = "BoxWorld-continuous-v0"
     n_epochs = 30
     use_wandb=True
-    
+    efficient_student=False
+
+@train_hbc_ex.named_config
+def efficient_learner():
+    efficient_student = True
+
 @train_hbc_ex.named_config
 def boxworld_2targets():
     n_targets = 2
@@ -41,6 +47,7 @@ def boxworld_3targets():
 @train_hbc_ex.named_config
 def boxworld_4targets():
     n_targets = 4
+    n_epochs = 50
     kwargs = {
         'size': 10,
         'n_targets': n_targets,

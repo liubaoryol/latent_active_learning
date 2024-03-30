@@ -58,7 +58,7 @@ class QueryCapLimit(CuriousPupil):
     query_demo_cap: int = 0
     
     def query_oracle(self):
-        """Will query oracle on all trajectories and states at the rate of `query_percent`"""
+        """Will query oracle on all trajectories `query_demo_cap` number of times"""
         for idx in range(len(self.demos)):
             self._query_single_demo(idx)
         self._num_queries += 1
@@ -70,3 +70,24 @@ class QueryCapLimit(CuriousPupil):
         for j in idxs:
             option = self.oracle.query(idx, j)
             demo.set_true_latent(j, option)
+
+
+class EfficientStudent(CuriousPupil):
+    """Student that accesses all info, but stores only the
+    states at the change of the latent state"""
+    
+    def query_oracle(self):
+        for idx in range(len(self.demos)):
+            self._query_single_demo(idx)
+        self._num_queries += 1
+
+    def _query_single_demo(self, idx):
+        demo = self.demos[idx]
+
+        option_1 = self.oracle.query(idx, 0)
+        demo.set_true_latent(0, option_1)
+        for j in range(1, len(demo.obs)):
+            option = self.oracle.query(idx, j)
+            if option!=option_1:
+                demo.set_true_latent(j, option)
+                option_1=option
