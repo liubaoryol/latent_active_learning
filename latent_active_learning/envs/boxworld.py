@@ -75,6 +75,14 @@ class BoxWorldEnv(gym.Env):
 
         return obs
 
+    def get_obs(self):
+        visited = [0 if t in self._visited_goals else 1 for t in range(self.n_targets)]
+
+        obs = np.concatenate(self.occupied_grids)
+        obs = np.concatenate([obs, visited, [self._curr_goal]])
+
+        return obs
+
     # def _get_info(self):
     #     return {
     #         "distance": np.linalg.norm(
@@ -127,8 +135,10 @@ class BoxWorldEnv(gym.Env):
         info = {}
         # info = self._get_info()
 
-        if self.render_mode == "human":
+        if self.render_mode=="human":
             self._render_frame()
+        elif self.render_mode=="rgb_array":
+            observation = self._render_frame()
 
         return observation, info
 
@@ -178,6 +188,8 @@ class BoxWorldEnv(gym.Env):
 
         if self.render_mode == "human":
             self._render_frame()
+        elif self.render_mode=="rgb_array":
+            observation = self._render_frame()
 
         return observation, reward, terminated, truncated, info
 
@@ -271,7 +283,7 @@ class BoxWorldEnv(gym.Env):
             self.clock.tick(self.metadata["render_fps"])
         else:  # rgb_array
             return np.transpose(
-                np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
+                np.array(pygame.surfarray.pixels3d(canvas)), axes=(2, 1, 0)
             )
 
     def close(self):

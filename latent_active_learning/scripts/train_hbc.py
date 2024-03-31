@@ -1,13 +1,14 @@
 from datetime import datetime
 import gymnasium as gym
 from stable_baselines3.common.monitor import Monitor
+import wandb
 
 from latent_active_learning.scripts.config.train_hbc import train_hbc_ex
 from latent_active_learning.scripts.utils import get_demos
 from latent_active_learning.wrappers.latent_wrapper import FilterLatent
 from latent_active_learning.hbc import HBC
 from latent_active_learning.oracle import Random, Oracle, QueryCapLimit, EfficientStudent
-
+    
 
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
@@ -28,7 +29,6 @@ def main(_config,
     assert not (query_percent is None and query_cap is None), error_msg
 
     if use_wandb:
-        import wandb
         run = wandb.init(
             project=f'{env_name[:-3]}-size{kwargs["size"]}-targets{n_targets}',
             name='HBC_{}{}_{}{}'.format(
@@ -39,7 +39,6 @@ def main(_config,
             ),
             tags=['hbc'],
             config=_config,
-            monitor_gym=True, # NOTE: had to make changes to an __init__ file to make this work. I'm not sure if it will work
             save_code=True
         )
     else:
@@ -59,14 +58,7 @@ def main(_config,
     env = gym.make(env_name, **kwargs)
     env = Monitor(env)
     env = FilterLatent(env, list(range(filter_state_until, 0)))
-    env.unwrapped._max_episode_steps = kwargs['size']**2
-    # env = DummcyVecEnv([])
-    # env = VecVideoRecorder(
-    #     env,
-    #     f'videos/{run.id if run is not None else _config.seed}', 
-    #     record_video_trigger=lambda x: x % 2000==0,
-    #     video_length=200
-    # )
+    env.unwrapped._max_episode_steps = kwargs['size']**2 * n_targets
 
     hbc = HBC(
         option_dim=n_targets,

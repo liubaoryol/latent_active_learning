@@ -1,4 +1,5 @@
 import torch
+import wandb
 import os
 from datetime import datetime
 from typing import Union, Tuple, Dict, Optional
@@ -7,6 +8,9 @@ from gymnasium import spaces
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.utils import obs_as_tensor
+from copy import deepcopy as copy
+import matplotlib.pyplot as plt
+from PIL import Image
 
 import imitation
 from imitation.algorithms import bc
@@ -61,6 +65,14 @@ class HBCLogger:
                                            wandb_run=wandb_run)
         self.wandb_run = wandb_run
 
+        self._file_loc = {
+            0: 'zero.png',
+            1: 'one.png',
+            2: 'two.png',
+            3: 'three.png',
+            4: 'four.png'
+        }
+
     def reset_tensorboard_steps(self):
         self._tensorboard_step = 0
 
@@ -86,6 +98,59 @@ class HBCLogger:
                 "env/rollout_mean": rollout_mean,
                 "env/rollout_std": rollout_std
             })
+
+    def log_rollout(
+        self,
+        env,
+        model
+    ):
+        if self.wandb_run is None:
+            return
+
+        # Get visualizer
+        viz_env = copy(env.unwrapped)
+        viz_env.render_mode = 'rgb_array'
+        viz_env = TransformBoxWorldReward(viz_env)
+        # Set first state, keep track of both rgb and obs for input of model
+        
+        frame = viz_env.reset()[0]
+        observations = viz_env.get_obs()[env.mask]
+        states = None
+        episode_starts = np.ones((1,), dtype=bool)
+        done= False
+        
+        frames = []
+        latents = []
+        both = []
+        # Get rollout
+        while not done:
+            actions, states = model.predict(
+                observations.reshape(1,-1),  # type: ignore[arg-type]
+                state=states,
+                episode_start=episode_starts,
+                deterministic=True,
+            )
+            frame, rew, done, _, _ = viz_env.step(actions[0])
+            new_obs = viz_env.get_obs()[env.mask]
+            episode_starts[0] = done
+            observations = new_obs
+            latent_im = Image.open(os.path.join(
+                    CURR_DIR,
+                    f'latent_active_learning/{self._file_loc[states[0]]}'
+                )).resize((512,512))
+
+            new_im = Image.new('RGBA', latent_im.size, "WHITE")
+            new_im.paste(latent_im, (0,0), latent_im)
+            latent_im = np.array(new_im.convert('RGB'))
+            latent_im = np.moveaxis(latent_im, -1, 0)
+            frames.append(frame)
+            latents.append(latent_im)
+            both.append(np.concatenate([frame, latent_im], axis=2))
+        
+        print("LENGTH OF ROLLOUT IS", len(both))
+        self.wandb_run.log({"rollout/video": wandb.Video(np.stack(both), fps=4)})
+        # self.wandb_run.log({"rollout/video": wandb.Video(np.stack(frames), fps=1)})
+        # self.wandb_run.log({"rollout/latent": wandb.Video(np.stack(latents), fps=1)})
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -157,6 +222,10 @@ class HBC:
                 hamming_loss=np.mean(distances),
                 rollout_mean=mean_return,
                 rollout_std=std_return
+            )
+            self._logger.log_rollout(
+                env=self.env,
+                model=self
             )
 
             self._logger.last_mean = mean_return

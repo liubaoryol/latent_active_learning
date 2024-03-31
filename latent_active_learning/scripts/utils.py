@@ -8,7 +8,7 @@ from latent_active_learning.collect import get_expert
 
 
 @train_hbc_ex.capture
-def get_demos(env_name, filter_state_until, kwargs):
+def get_demos(env_name, filter_state_until, kwargs, num_demos):
     '''Get clean rollouts and corresponding of simple BoxWorld'''
     expert = get_expert(env_name, kwargs)
 
@@ -16,7 +16,7 @@ def get_demos(env_name, filter_state_until, kwargs):
         env_name=env_name,
         model=expert,
         kwargs=kwargs,
-        n_demo=500
+        n_demo=num_demos
         )
 
     rollouts = filter_TrajsWRewards(rollouts_full, filter_state_until)
