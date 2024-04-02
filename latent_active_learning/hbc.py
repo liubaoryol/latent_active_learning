@@ -70,7 +70,10 @@ class HBCLogger:
             1: 'one.png',
             2: 'two.png',
             3: 'three.png',
-            4: 'four.png'
+            4: 'four.png',
+            5: 'five.png',
+            6: 'six.png',
+            7: 'seven.png'
         }
 
     def reset_tensorboard_steps(self):
@@ -110,7 +113,7 @@ class HBCLogger:
         # Get visualizer
         viz_env = copy(env.unwrapped)
         viz_env.render_mode = 'rgb_array'
-        viz_env = TransformBoxWorldReward(viz_env)
+        # viz_env = TransformBoxWorldReward(viz_env)
         # Set first state, keep track of both rgb and obs for input of model
         
         frame = viz_env.reset()[0]
@@ -216,7 +219,8 @@ class HBC:
                 f = lambda x: np.linalg.norm(
                     (options[x].squeeze()[1:] - self.curious_student.oracle.true_options[x]), 0)/len(options[x])
                 distances = list(map(f, range(len(options))))
-            mean_return, std_return = evaluate_policy(self, TransformBoxWorldReward(self.env), 10)
+            # mean_return, std_return = evaluate_policy(self, TransformBoxWorldReward(self.env), 10)
+            mean_return, std_return = evaluate_policy(self, self.env, 10)
             self._logger.log_batch(
                 epoch_num=epoch,
                 hamming_loss=np.mean(distances),

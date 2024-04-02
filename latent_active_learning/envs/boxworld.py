@@ -10,13 +10,15 @@ class BoxWorldEnv(gym.Env):
     def __init__(self, render_mode=None, size=5, n_targets=1,
                  latent_distribution=np.random.randint,
                  allow_variable_horizon=True,
-                 fixed_targets=None):
+                 fixed_targets=None,
+                 obstacles=None):
         self.size = size  # The size of the square grid
         self.window_size = 512  # The size of the PyGame window
         self._max_episode_steps = n_targets**2 * size**3
 
         self.n_targets = n_targets
         self.fixed_targets=fixed_targets
+        self.obstacles = obstacles
         self.occupied_grids = np.empty((n_targets + 1, 2), dtype=np.int64)
         self.latent_distribution = latent_distribution
 
@@ -91,7 +93,10 @@ class BoxWorldEnv(gym.Env):
     #     }
 
     def _is_occupied(self, location):
-        return (self.occupied_grids==location).all(axis=1).any()
+        # A = (self.obstacles==location).all(axis=1).any()
+        B = (self.occupied_grids==location).all(axis=1).any()
+        A = B
+        return (A or B)
 
     def reset(self, seed=None, options=None):
         return self._reset(seed=seed, targets=self.fixed_targets)
@@ -160,9 +165,7 @@ class BoxWorldEnv(gym.Env):
             direction = self._action_to_direction[action]
             # We use `np.clip` to make sure we don't leave the grid
             agent_location = self.occupied_grids[0]
-            agent_location = np.clip(
-                agent_location + direction, 0, self.size - 1
-            )
+            agent_location = self.move_agent(agent_location, direction)
             self.occupied_grids[0] = agent_location
 
             curr_target = self.occupied_grids[self._curr_goal + 1]
@@ -193,6 +196,14 @@ class BoxWorldEnv(gym.Env):
 
         return observation, reward, terminated, truncated, info
 
+    def move_agent(self, agent_location, direction):
+        new_location = np.clip(agent_location + direction, 0, self.size - 1)
+        return new_location
+        # if (new_location==self.obstacles).all(axis=1).any():
+        #     return agent_location
+        # else:
+        #     return new_location
+            
     def target_achieved(self, agent_location, target):
         return np.array_equal(agent_location, target)
 
