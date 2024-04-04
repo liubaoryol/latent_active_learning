@@ -1,6 +1,7 @@
 import dataclasses
 import torch
 import numpy as np
+from scipy.stats import entropy
 
 from stable_baselines3.common.utils import obs_as_tensor
 from imitation.data.types import TrajectoryWithRew
@@ -40,7 +41,7 @@ class TrajectoryWithLatent(TrajectoryWithRew):
         object.__setattr__(self,
                            '_is_latent_estimated',
                            np.concatenate(
-                               [[1], np.zeros(len(self.obs), dtype=int)]
+                               [[True], np.zeros(len(self.obs), dtype=bool)]
                                ))
         object.__setattr__(self, '_latent', -np.ones(len(self.obs) + 1, dtype=int))
         object.__setattr__(self, '_N', len(self.obs))
@@ -57,7 +58,7 @@ class TrajectoryWithLatent(TrajectoryWithRew):
         Returns True if setting was possible, False if it was set up already."""
         if not self._is_latent_estimated[idx+1]:
             self._latent[idx + 1] = value
-            self._is_latent_estimated[idx + 1] = 1
+            self._is_latent_estimated[idx + 1] = True
             return True
         return False
     
@@ -75,6 +76,9 @@ class TrajectoryWithLatent(TrajectoryWithRew):
         return torch.stack(results, axis=1)
     
     def _log_prob_option(self):
+        """
+        Return probability P(o|s, o_); size N x (option_dim + 1) x option_dim
+        """
         states = obs_as_tensor(self.obs, self._device)
         results = []
         for o in range(-1, self.option_dim):
@@ -84,6 +88,7 @@ class TrajectoryWithLatent(TrajectoryWithRew):
         return torch.stack(results, axis=1)
     
     def _update_latent(self):
+        """Apply Viterbi algorithm"""
         with torch.no_grad():
             log_acts = self._log_prob_action()  # demo_len x 1 x ct
             log_opts = self._log_prob_option()  # demo_len x (ct_1+1) x ct
@@ -114,6 +119,55 @@ class TrajectoryWithLatent(TrajectoryWithRew):
             for i in range(self._N, 1, -1):
                 c_array[i-1] = max_path[i-1][c_array[i]]
         return c_array.detach().numpy()
+
+    def forward(self):
+        """Forward messages"""
+        with torch.no_grad():
+            log_acts = self._log_prob_action()  # demo_len x 1 x ct
+            log_opts = self._log_prob_option()  # demo_len x (ct_1+1) x ct
+            # Special handling of last state:
+            log_acts = log_acts.reshape([-1, 1, self.option_dim])
+            last_log_opts = log_opts[-1][1:]
+            log_opts = log_opts[:-1]
+
+            # Done special handling
+            log_prob = log_opts[:, 1:] + log_acts
+            log_prob = torch.concatenate([log_prob, last_log_opts.unsqueeze(0)])
+            forward_msg = torch.zeros([self._N+1, self.option_dim, self.option_dim])
+            for j in range(1, self._N+1):
+                if self._is_latent_estimated[j]:
+                    forward_msg[j] = np.log(1e-10)
+                    forward_msg[j][:, self._latent[j]] = 0
+                else:
+                    forward_msg[j] = forward_msg[j-1] + log_prob[j-1]
+        return forward_msg.detach().numpy()
+
+    def backward(self):
+        """Backward messages"""
+        
+        with torch.no_grad():
+            log_acts = self._log_prob_action()  # demo_len x 1 x ct
+            log_opts = self._log_prob_option()  # demo_len x (ct_1+1) x ct
+            # Special handling of last state:
+            log_acts = log_acts.reshape([-1, 1, self.option_dim])
+            last_log_opts = log_opts[-1][1:]
+            log_opts = log_opts[:-1]
+
+            # Done special handling
+            log_prob = log_opts[:, 1:] + log_acts
+            log_prob = torch.concatenate([log_prob, last_log_opts.unsqueeze(0)])
+            backward_msg = torch.zeros([self._N+1, self.option_dim, self.option_dim])
+            for j in reversed(range(1, self._N)):
+                if self._is_latent_estimated[j]:
+                    backward_msg[j] = np.log(1e-10)
+                    backward_msg[j][:, self._latent[j]] = 0
+                else:
+                    backward_msg[j] = backward_msg[j+1] + log_prob[j]
+        return backward_msg.detach().numpy()
+
+    def entropy(self):
+        res = self.forward() + self.backward()
+        return entropy(res, axis=(1,2))
 
     def __eq__(self, other:TrajectoryWithRew):
         return (other.obs == self.obs and  
