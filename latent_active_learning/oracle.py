@@ -140,7 +140,7 @@ class ActionEntropyBased(CuriousPupil):
         n = list(range(len(demo.obs)))
         unlabeled_idxs = np.array(n)[~demo._is_latent_estimated[1:]]
 
-        if unlabeled_idxs.size > 0
+        if unlabeled_idxs.size > 0:
             observations = demo.obs[unlabeled_idxs]
             options = demo.latent[unlabeled_idxs+1]
             
@@ -164,8 +164,11 @@ class IntentEntropyBased(CuriousPupil):
         self._num_queries += 1
 
     def _query_single_demo(self, idx):
-        pass
-
+        demo = self.demos[idx]
+        entropy = demo.entropy()
+        top_entropy_idx = entropy[1:].argmax()
+        option = self.oracle.query(idx, top_entropy_idx)
+        demo.set_true_latent(top_entropy_idx, option)
 
 @dataclasses.dataclass
 class ActionIntentEntropyBased(CuriousPupil):
@@ -173,6 +176,16 @@ class ActionIntentEntropyBased(CuriousPupil):
         """Will query oracle on all trajectories and states, randomly"""
         for idx in range(len(self.demos)):
             self._query_single_demo(idx)
+        self._num_queries += 1
+
+    def _query_single_demo(self, idx):
+        pass
+
+
+@dataclasses.dataclass
+class Tamada(CuriousPupil):
+    def query_oracle(self):
+        """Will query oracle on all trajectories and states, randomly"""
         self._num_queries += 1
 
     def _query_single_demo(self, idx):
