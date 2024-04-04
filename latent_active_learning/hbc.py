@@ -211,9 +211,12 @@ class HBC:
 
 
     def train(self, n_epochs):
-        self.curious_student.query_oracle()
+        # self.curious_student.query_oracle()
 
         for epoch in range(n_epochs):
+            if not epoch % 10:
+                # query every 5 steps
+                self.curious_student.query_oracle()
             with torch.no_grad():
                 options = [demo.latent for demo in self.curious_student.demos]
                 f = lambda x: np.linalg.norm(

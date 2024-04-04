@@ -8,7 +8,7 @@ def discrete_env():
     env_name = "BoxWorld-v0"
     n_epochs = 100
     use_wandb=True
-    num_demos=400
+    num_demos=100
 
 @train_hbc_ex.named_config
 def continuous_env():

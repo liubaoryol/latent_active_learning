@@ -143,11 +143,11 @@ class ActionEntropyBased(CuriousPupil):
         if unlabeled_idxs.size > 0:
             observations = demo.obs[unlabeled_idxs]
             options = demo.latent[unlabeled_idxs+1]
-            
+            import torch
             with torch.no_grad():
                 lo_input = obs_as_tensor(
                     np.concatenate([observations, options], axis=1),
-                    device=self.model.device)
+                    device=self.policy.device)
                 entropy = self.policy.get_distribution(lo_input).entropy()
                 top_entropy_idx = entropy.topk(1)[1].item()
 

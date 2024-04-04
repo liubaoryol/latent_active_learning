@@ -8,7 +8,8 @@ from latent_active_learning.scripts.utils import get_demos
 from latent_active_learning.wrappers.latent_wrapper import FilterLatent
 from latent_active_learning.hbc import HBC
 from latent_active_learning.oracle import Random, Oracle, QueryCapLimit, EfficientStudent
-    
+from latent_active_learning.oracle import *
+
 
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
@@ -20,40 +21,66 @@ def main(_config,
          kwargs,
          n_epochs,
          use_wandb,
+         student_type=None,
          efficient_student=False,
          query_percent=None,
-         query_cap=None):
+         query_cap=None,
+         exp_identifier=None):
     
-    error_msg = 'Must define one and only one of `num_queries` or `query_percent`'
-    assert query_percent is None or query_cap is None, error_msg
-    assert not (query_percent is None and query_cap is None), error_msg
+    # error_msg = 'Must define one and only one of `num_queries` or `query_percent`'
+    # assert query_percent is None or query_cap is None, error_msg
+    # assert not (query_percent is None and query_cap is None), error_msg
 
     if use_wandb:
         run = wandb.init(
-            project=f'{env_name[:-3]}-size{kwargs["size"]}-targets{n_targets}',
-            name='HBC_{}{}_{}{}'.format(
-                'queryCap' if query_cap is not None else 'queryPercent',
-                query_cap if query_cap is not None else query_percent,
-                'efficientStudent' if efficient_student else '',
+            project=f'[{exp_identifier}]{env_name[:-3]}-size{kwargs["size"]}-targets{n_targets}',
+            name='HBC_{}{}'.format(
+                student_type,
                 timestamp(),
             ),
             tags=['hbc'],
             config=_config,
             save_code=True
         )
+        # run = wandb.init(
+        #     project=f'{env_name[:-3]}-size{kwargs["size"]}-targets{n_targets}',
+        #     name='HBC_{}{}_{}{}'.format(
+        #         'queryCap' if query_cap is not None else 'queryPercent',
+        #         query_cap if query_cap is not None else query_percent,
+        #         'efficientStudent' if efficient_student else '',
+        #         timestamp(),
+        #     ),
+        #     tags=['hbc'],
+        #     config=_config,
+        #     save_code=True
+        # )
     else:
         run = None
 
     rollouts, options = get_demos()
     gini = Oracle(rollouts, options)
-    if query_percent is not None:
-        student = Random(rollouts, gini, option_dim=n_targets, query_percent=query_percent)
-    else:
-        student = QueryCapLimit(rollouts, gini, option_dim=n_targets, query_demo_cap=query_cap)
 
-    if efficient_student:
-        student = EfficientStudent(rollouts, gini, option_dim=n_targets)
-    student.query_oracle()
+    # Create student:
+    if student_type=='random':
+        student = IterativeRandom(rollouts, gini, option_dim=n_targets)
+
+    elif student_type=='action_entropy':
+        student = ActionEntropyBased(rollouts, gini, option_dim=n_targets)
+
+    elif student_type=='intent_entropy':
+        student = IntentEntropyBased(rollouts, gini, option_dim=n_targets)
+
+    elif student_type=='tamada':
+        student = Tamada(rollouts, gini, option_dim=n_targets)
+
+    # if query_percent is not None:
+    #     student = Random(rollouts, gini, option_dim=n_targets, query_percent=query_percent)
+    # else:
+    #     student = QueryCapLimit(rollouts, gini, option_dim=n_targets, query_demo_cap=query_cap)
+
+    # if efficient_student:
+    #     student = EfficientStudent(rollouts, gini, option_dim=n_targets)
+    # student.query_oracle()
 
     env = gym.make(env_name, **kwargs)
     env = Monitor(env)
@@ -69,4 +96,8 @@ def main(_config,
         results_dir='results_fixed_order_targets',
         wandb_run=run
         )
+    if student_type=='action_entropy':
+        student.set_policy(hbc)
     hbc.train(n_epochs)
+
+    print(f'Student queried {hbc.curious_student._num_queries} amount of times')
