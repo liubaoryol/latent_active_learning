@@ -11,14 +11,18 @@ class BoxWorldEnv(gym.Env):
                  latent_distribution=np.random.randint,
                  allow_variable_horizon=True,
                  fixed_targets=None,
-                 obstacles=None):
+                 obstacles=None,
+                 danger=None):
         self.size = size  # The size of the square grid
         self.window_size = 512  # The size of the PyGame window
         self._max_episode_steps = n_targets**2 * size**3
 
         self.n_targets = n_targets
-        self.fixed_targets=fixed_targets
         self.obstacles = obstacles
+        self.danger = danger
+        self.fixed_targets = fixed_targets
+        # self.obstacles = np.empty((1,2)) if obstacles is None else np.array(obstacles)
+        # self.danger = np.empty((1,2)) if danger is None else np.array(danger)
         self.occupied_grids = np.empty((n_targets + 1, 2), dtype=np.int64)
         self.latent_distribution = latent_distribution
 
@@ -69,13 +73,57 @@ class BoxWorldEnv(gym.Env):
         self.window = None
         self.clock = None
 
-    def _get_obs(self):
-        visited = [0 if t in self._visited_goals else 1 for t in range(self.n_targets)]
+    @property
+    def danger(self):
+        return self._danger
+    
+    @property
+    def obstacles(self):
+        return self._obstacles
 
-        obs = np.concatenate(self.occupied_grids)
-        obs = np.concatenate([obs, visited, [self._curr_goal]])
+    @property
+    def fixed_targets(self):
+        return self._fixed_targets
 
-        return obs
+    @danger.setter
+    def danger(self, value):
+        self._danger = np.empty((1,2)) if value is None else np.array(value)
+        assert self._danger.shape[1]==2, f'Danger grids must have shape \
+                                          (N, 2); instead they are shape \
+                                          {self._danger.shape}'
+
+    @obstacles.setter
+    def obstacles(self, value):
+        if value is None:
+            self._obstacles = np.empty((1,2))
+        else:
+            self._obstacles = np.array(value)
+
+        assert self._obstacles.shape[1]==2, f'Obstacles must have shape \
+                                            (N, 2); instead they are shape \
+                                            {self._obstacles.shape}'
+
+    @fixed_targets.setter
+    def fixed_targets(self, targets):
+        self._fixed_targets = targets
+
+        if targets is not None:
+            assert len(targets)==self.n_targets, \
+            'Number of targets should be {}, but {} were given'.format(
+                self.n_targets, len(targets))
+        
+            self._fixed_targets = np.array(targets)
+
+            
+            assert self._fixed_targets.shape[1]==2, f'Obstacles must have \
+                                                    shape (N, 2); instead \
+                                                    they are shape \
+                                                    {self._fixed_targets.shape}'
+            for target in targets:
+                assert not self._in_obstacle(target), \
+                    'Targets must be outside obstacles'
+                assert (np.clip(target, 0, self.size - 1) == target).all(), \
+                    'Targets must be inside grid'
 
     def get_obs(self):
         visited = [0 if t in self._visited_goals else 1 for t in range(self.n_targets)]
@@ -93,10 +141,15 @@ class BoxWorldEnv(gym.Env):
     #     }
 
     def _is_occupied(self, location):
-        # A = (self.obstacles==location).all(axis=1).any()
+        A = self._in_obstacle(location)
         B = (self.occupied_grids==location).all(axis=1).any()
-        A = B
         return (A or B)
+
+    def _in_obstacle(self, location):
+        return (self.obstacles==location).all(axis=1).any()
+
+    def _in_danger(self, location):
+        return (self.danger==location).all(axis=1).any()
 
     def reset(self, seed=None, options=None):
         return self._reset(seed=seed, targets=self.fixed_targets)
@@ -136,7 +189,7 @@ class BoxWorldEnv(gym.Env):
         self.occupied_grids[0] = agent_location
 
 
-        observation = self._get_obs()
+        observation = self.get_obs()
         info = {}
         # info = self._get_info()
 
@@ -165,7 +218,7 @@ class BoxWorldEnv(gym.Env):
             direction = self._action_to_direction[action]
             # We use `np.clip` to make sure we don't leave the grid
             agent_location = self.occupied_grids[0]
-            agent_location = self.move_agent(agent_location, direction)
+            agent_location, reward = self.move_agent(agent_location, direction)
             self.occupied_grids[0] = agent_location
 
             curr_target = self.occupied_grids[self._curr_goal + 1]
@@ -180,12 +233,14 @@ class BoxWorldEnv(gym.Env):
                         self.at_absorb_state = True
                 else:
                     self._curr_goal = self.sample_next_goal()
+            elif self._in_danger(agent_location):
+                reward = -50
         
         if self._elapsed_steps >= self._max_episode_steps:
             truncated = True
             terminated = True
 
-        observation = self._get_obs()
+        observation = self.get_obs()
         info = {}
         # info = self._get_info()
 
@@ -198,11 +253,10 @@ class BoxWorldEnv(gym.Env):
 
     def move_agent(self, agent_location, direction):
         new_location = np.clip(agent_location + direction, 0, self.size - 1)
-        return new_location
-        # if (new_location==self.obstacles).all(axis=1).any():
-        #     return agent_location
-        # else:
-        #     return new_location
+        if (new_location==self.obstacles).all(axis=1).any():
+            return agent_location, -50
+        else:
+            return new_location, -1
             
     def target_achieved(self, agent_location, target):
         return np.array_equal(agent_location, target)
@@ -258,6 +312,31 @@ class BoxWorldEnv(gym.Env):
                         (pix_square_size, pix_square_size),
                     ),
                 )
+        
+        # Draw obstacles
+        for obstacle in self.obstacles:
+            color = (0, 0, 0)
+            pygame.draw.rect(
+                canvas,
+                color,
+                pygame.Rect(
+                    pix_square_size * obstacle,
+                    (pix_square_size, pix_square_size),
+                ),
+            )
+        
+        # Draw danger
+        for danger in self.danger:
+            color = (255,211,67)
+            pygame.draw.rect(
+                canvas,
+                color,
+                pygame.Rect(
+                    pix_square_size * danger,
+                    (pix_square_size, pix_square_size),
+                ),
+            )
+
         # Now we draw the agent
         pygame.draw.circle(
             canvas,

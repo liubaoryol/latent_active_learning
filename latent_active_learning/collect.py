@@ -95,8 +95,20 @@ def get_expert(env_name, kwargs, n_epoch=1e6):
         return expert
     
     warnings.warn("Expert has not been trained on this environment. Training an expert...")
-    vec_env = get_environment(env_name, full_obs=True, kwargs=kwargs)
-    model = PPO("MlpPolicy", vec_env, verbose=1)
-    model.learn(total_timesteps=n_epoch, progress_bar=True)
+    model = train_expert(env_name, kwargs, n_epoch)
     model.save(expert_dir)
     return model
+
+def train_expert(env_name, kwargs, n_epoch=1e6):
+    vec_env = get_environment(env_name, full_obs=True, kwargs=kwargs)
+    batch_size = 1024
+    rollout_buffer_size = 10240
+    model = PPO(
+        "MlpPolicy",
+        vec_env,
+        verbose=1,
+        batch_size = batch_size,
+        n_steps = rollout_buffer_size
+        )
+    model.rollout_buffer
+    model.learn(total_timesteps=n_epoch, progress_bar=True)
