@@ -100,6 +100,7 @@ def get_expert(env_name, kwargs, n_epoch=1e6):
     return model
 
 def train_expert(env_name, kwargs, n_epoch=1e6):
+    n_epoch = 1e7
     vec_env = get_environment(env_name, full_obs=True, kwargs=kwargs)
     batch_size = 1024
     rollout_buffer_size = 10240
@@ -112,3 +113,4 @@ def train_expert(env_name, kwargs, n_epoch=1e6):
         )
     model.rollout_buffer
     model.learn(total_timesteps=n_epoch, progress_bar=True)
+    return model
