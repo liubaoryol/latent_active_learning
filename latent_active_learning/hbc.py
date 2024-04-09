@@ -174,7 +174,7 @@ class HBC:
         self.device = device
         self.option_dim = option_dim
         self.curious_student = curious_student
-        self.env = Monitor(env)
+        self.env = env
         boxworld_params = f'size{env.size}-targets{env.n_targets}'
         logging_dir = os.path.join(
             CURR_DIR,
@@ -214,7 +214,7 @@ class HBC:
         # self.curious_student.query_oracle()
 
         for epoch in range(n_epochs):
-            if not epoch % 10:
+            if not epoch % 5:
                 # query every 5 steps
                 self.curious_student.query_oracle()
             with torch.no_grad():

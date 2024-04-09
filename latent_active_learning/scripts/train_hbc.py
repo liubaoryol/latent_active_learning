@@ -62,6 +62,9 @@ def main(_config,
 
     # Create student:
     if student_type=='random':
+        student = Random(rollouts, gini, option_dim=n_targets, query_percent=query_percent)
+
+    if student_type=='iterative_random':
         student = IterativeRandom(rollouts, gini, option_dim=n_targets)
 
     elif student_type=='action_entropy':

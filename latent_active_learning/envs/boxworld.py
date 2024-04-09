@@ -73,6 +73,10 @@ class BoxWorldEnv(gym.Env):
         self.window = None
         self.clock = None
 
+        self.danger_reward = -100
+        self.obstacle_reward = -1
+        self.target_reward = 1000
+
     @property
     def danger(self):
         return self._danger
@@ -225,7 +229,7 @@ class BoxWorldEnv(gym.Env):
             # An episode is done iff the agent has reached the target
             if self.target_achieved(agent_location, curr_target):
                 self._visited_goals.append(self._curr_goal)
-                reward = 50
+                reward = self.target_reward
                 if len(self._visited_goals) == self.n_targets:
                     if self.allow_variable_horizon:
                         terminated = True
@@ -234,7 +238,7 @@ class BoxWorldEnv(gym.Env):
                 else:
                     self._curr_goal = self.sample_next_goal()
             elif self._in_danger(agent_location):
-                reward = -50
+                reward = self.danger_reward
         
         if self._elapsed_steps >= self._max_episode_steps:
             truncated = True
@@ -254,7 +258,7 @@ class BoxWorldEnv(gym.Env):
     def move_agent(self, agent_location, direction):
         new_location = np.clip(agent_location + direction, 0, self.size - 1)
         if (new_location==self.obstacles).all(axis=1).any():
-            return agent_location, -50
+            return agent_location, self.obstacle_reward
         else:
             return new_location, -1
             
@@ -382,7 +386,28 @@ class BoxWorldEnv(gym.Env):
             pygame.quit()
             self.window = None
 
+    def visualize(self):
+        assert self.render_mode == 'human', "`render_mode` should be 'human'"
+        
+        observation, info = self.reset()
 
+        while True:
+
+            for event in pygame.event.get():
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_LEFT:
+                        action = 2
+                    elif event.key == pygame.K_RIGHT:
+                        action = 0
+                    elif event.key == pygame.K_UP:
+                        action = 3
+                    elif event.key == pygame.K_DOWN:
+                        action = 1
+                        
+                    observation, reward, terminated, truncated, info = self.step(action)
+                    print("Reward: ", reward)
+                    if terminated or truncated:
+                        observation, info = self.reset()
 
 # ############## COLLECT DEMO
 # # import gymnasium as gym
