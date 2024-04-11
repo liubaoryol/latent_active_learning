@@ -3,6 +3,7 @@ from gymnasium import spaces
 import pygame
 import numpy as np
 import torch
+import time
 
 class BoxWorldEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
@@ -386,7 +387,7 @@ class BoxWorldEnv(gym.Env):
             pygame.quit()
             self.window = None
 
-    def visualize(self):
+    def visual_interactive(self):
         assert self.render_mode == 'human', "`render_mode` should be 'human'"
         
         observation, info = self.reset()
@@ -409,6 +410,110 @@ class BoxWorldEnv(gym.Env):
                     if terminated or truncated:
                         observation, info = self.reset()
 
+    def visualize_policy(self, policy, intent = None, get_distribution = None):
+
+
+        if self.window is None:
+            pygame.init()
+            pygame.display.init()
+            self.window = pygame.display.set_mode((self.window_size, self.window_size))
+
+        if get_distribution is None:
+            # Define how to extract action_distribution
+            def get_distribution(policy, st) -> np.ndarray:
+                dist = policy.policy.get_distribution(torch.Tensor([st]))
+                dist =  dist.distribution.logits.exp()[0]
+                return dist.detach().numpy()
+
+        tmp_render_mode = self.render_mode
+        self.render_mode = 'rgb_array'
+        np_grid = np.transpose(self.render(), axes=(2, 1, 0))
+        canvas = pygame.surfarray.make_surface(np_grid)
+        pix_square_size = (
+            self.window_size / self.size
+        )  # The size of a single grid square in pixels
+
+        st = self.get_obs()
+        if intent is not None:
+            st[-1] = intent
+
+        color1 = np.array((159, 43, 104))
+        color2 = np.array((255, 255, 255))
+        # Draw obstacles
+        import itertools
+        for grid in itertools.product(range(self.size), range(self.size)):
+            grid = np.array(grid)
+            if (grid == self.obstacles).all(axis=1).any():
+                continue
+            if (grid == self.fixed_targets).all(axis=1).any():
+                continue
+            if (grid == self.danger).all(axis=1).any():
+                continue
+            vertice_ul = pix_square_size * grid
+            vertice_ur = pix_square_size * (grid + (1, 0))
+            vertice_lr = pix_square_size * (grid + (1, 1))
+            vertice_ll = pix_square_size * (grid + (0, 1))
+            center = pix_square_size * (grid + 0.5)
+
+            st[:2] = grid
+            action_dist = get_distribution(policy, st)
+            # Draw right triangle
+            pygame.draw.polygon(
+                canvas,
+                tuple(color1*action_dist[0] + color2*(1-action_dist[0])),
+                [center, vertice_ur, vertice_lr],
+            )
+            # Draw lower triangle
+            pygame.draw.polygon(
+                canvas,
+                tuple(color1*action_dist[1] + color2*(1-action_dist[1])),
+                [center, vertice_lr, vertice_ll],
+            )
+            # Draw left triangle
+            pygame.draw.polygon(
+                canvas,
+                tuple(color1*action_dist[2] + color2*(1-action_dist[2])),
+                [center, vertice_ul, vertice_ll],
+            )
+            # Draw upper triangle
+            pygame.draw.polygon(
+                canvas,
+                tuple(color1*action_dist[3] + color2*(1-action_dist[3])),
+                [center, vertice_ul, vertice_ur],
+            )
+                    # Finally, add some gridlines
+        for x in range(self.size + 1):
+            pygame.draw.line(
+                canvas,
+                0,
+                (0, pix_square_size * x),
+                (self.window_size, pix_square_size * x),
+                width=3,
+            )
+            pygame.draw.line(
+                canvas,
+                0,
+                (pix_square_size * x, 0),
+                (pix_square_size * x, self.window_size),
+                width=3,
+            )
+
+
+        # The following line copies our drawings from `canvas` to the visible window
+        self.window.blit(canvas, canvas.get_rect())
+        pygame.event.pump()
+        pygame.display.update()
+
+        self.render_mode = tmp_render_mode
+
+    def visualize_demo(self, trajectory)
+        self.reset()
+        init_state = trajectory.obs[0][:2 * (self.n_targets+1)]
+        self.occupied_grids = init_state.reshape(-1, 2)
+        self.render()
+        for a in trajectory.acts:
+            self.step(a)
+        
 # ############## COLLECT DEMO
 # # import gymnasium as gym
 # # import latent_active_learning
