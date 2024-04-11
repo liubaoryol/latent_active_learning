@@ -9,7 +9,7 @@ from latent_active_learning.wrappers.latent_wrapper import FilterLatent
 from latent_active_learning.hbc import HBC
 from latent_active_learning.oracle import Random, Oracle, QueryCapLimit, EfficientStudent
 from latent_active_learning.oracle import *
-
+from latent_active_learning.collect import get_dir_name
 
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
@@ -42,29 +42,21 @@ def main(_config,
             config=_config,
             save_code=True
         )
-        # run = wandb.init(
-        #     project=f'{env_name[:-3]}-size{kwargs["size"]}-targets{n_targets}',
-        #     name='HBC_{}{}_{}{}'.format(
-        #         'queryCap' if query_cap is not None else 'queryPercent',
-        #         query_cap if query_cap is not None else query_percent,
-        #         'efficientStudent' if efficient_student else '',
-        #         timestamp(),
-        #     ),
-        #     tags=['hbc'],
-        #     config=_config,
-        #     save_code=True
-        # )
     else:
         run = None
 
-    rollouts, options = get_demos()
-    gini = Oracle(rollouts, options)
+    path = get_dir_name(env_name, kwargs).split('/')[1]
+    gini = Oracle.load('./expert_trajs/{}'.format(path))
+    rollouts = gini.expert_trajectories
 
     # Create student:
     if student_type=='random':
         student = Random(rollouts, gini, option_dim=n_targets, query_percent=query_percent)
 
-    if student_type=='iterative_random':
+    elif student_type=='query_cap':
+        student = QueryCapLimit(rollouts, gini, option_dim=n_targets, query_demo_cap=query_cap)
+
+    elif student_type=='iterative_random':
         student = IterativeRandom(rollouts, gini, option_dim=n_targets)
 
     elif student_type=='action_entropy':
@@ -79,14 +71,6 @@ def main(_config,
     elif student_type=='action_intent_entropy':
         student = ActionIntentEntropyBased(rollouts, gini, option_dim=n_targets)
 
-    # if query_percent is not None:
-    #     student = Random(rollouts, gini, option_dim=n_targets, query_percent=query_percent)
-    # else:
-    #     student = QueryCapLimit(rollouts, gini, option_dim=n_targets, query_demo_cap=query_cap)
-
-    # if efficient_student:
-    #     student = EfficientStudent(rollouts, gini, option_dim=n_targets)
-    # student.query_oracle()
 
     env = gym.make(env_name, **kwargs)
     env = Monitor(env)

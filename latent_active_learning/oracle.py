@@ -27,7 +27,7 @@ class Oracle:
     
     def save(self, path):
         if not os.path.exists(path):
-            os.mkdir(path)
+            os.makedirs(path)
         for name, attribute in self.__dict__.items():
             name += '.pkl'
             with open("/".join((path, name)), "wb") as f:
@@ -54,6 +54,31 @@ class Oracle:
                         in zip(self.true_options_test, other.true_options_test)])
         return A and B and C and D
 
+    def stats(self):
+        obs_len = [len(tr.obs) for tr in self.expert_trajectories]
+        returns = [np.sum(tr.rews) for tr in self.expert_trajectories]
+        obs_t_len = [len(tr.obs) for tr in self.expert_trajectories_test]
+        returns_t = [np.sum(tr.rews) for tr in self.expert_trajectories_test]
+        print("STATS TRAINING DATASET")
+        print("Num trajectories: ", len(self.expert_trajectories))
+        print("Avereage length: {}+/-{}".format(
+            np.mean(obs_len),
+            np.std(obs_len)))
+        print("Average returns: {}+/-{}\n".format(
+            np.mean(returns),
+            np.std(returns)
+        ))
+
+        print("STATS TESTING DATASET")
+        print("Num trajectories: ", len(self.expert_trajectories))
+        print("Avereage length: {}+/-{}".format(
+            np.mean(obs_t_len),
+            np.std(obs_t_len)))
+        print("Average returns: {}+/-{}".format(
+            np.mean(returns_t),
+            np.std(returns_t)
+        ))
+        
 @dataclasses.dataclass
 class CuriousPupil(ABC):
     demos: List[TrajectoryWithLatent]

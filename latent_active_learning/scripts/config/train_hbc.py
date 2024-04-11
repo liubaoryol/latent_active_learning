@@ -10,7 +10,7 @@ def rw4t_discrete():
     n_epochs = 200
     n_targets = 6
     use_wandb=True
-    num_demos=200
+    filter_state_until = -1 - n_targets
 
     kwargs = {
         'size': 10,
@@ -67,11 +67,39 @@ def rw4t_discrete():
 
 
 @train_hbc_ex.named_config
-def discrete_env():
+def discrete_2targets_boxworld():
+    env_name = "BoxWorld-v0"
+    n_epochs = 200
+    n_targets = 2
+    use_wandb=True
+    filter_state_until = -1 - n_targets
+
+    kwargs = {
+        'size': 10,
+        'n_targets': n_targets,
+        'allow_variable_horizon': True,
+        'fixed_targets': [ [0, 0], [9, 9] ],
+        'latent_distribution': lambda x: 0,
+        'render_mode': None
+        }
+
+
+@train_hbc_ex.named_config
+def discrete_3targets_boxworld():
     env_name = "BoxWorld-v0"
     n_epochs = 100
+    n_targets = 3
     use_wandb=True
-    num_demos=100
+    filter_state_until = -1 - n_targets
+
+    kwargs = {
+        'size': 10,
+        'n_targets': n_targets,
+        'allow_variable_horizon': True,
+        'fixed_targets': [ [0, 0], [9, 9], [0, 9] ],
+        'latent_distribution': lambda x: 0,
+        'render_mode': None
+        }
 
 @train_hbc_ex.named_config
 def continuous_env():
@@ -83,30 +111,6 @@ def continuous_env():
 @train_hbc_ex.named_config
 def efficient_learner():
     efficient_student = True
-
-@train_hbc_ex.named_config
-def boxworld_2targets():
-    n_targets = 2
-    kwargs = {
-        'size': 5,
-        'n_targets': n_targets,
-        'allow_variable_horizon': True,
-        'fixed_targets': [ [0,0], [4,4] ],
-        'latent_distribution': lambda x: 0,
-        'render_mode': None
-        }
-
-@train_hbc_ex.named_config
-def boxworld_3targets():
-    n_targets = 3
-    kwargs = {
-        'size': 5,
-        'n_targets': n_targets,
-        'allow_variable_horizon': True,
-        'fixed_targets': [[0,0],[4,4], [0,4]],
-        'latent_distribution': lambda x: 0,
-        'render_mode': None
-        }
 
 @train_hbc_ex.named_config
 def boxworld_4targets():

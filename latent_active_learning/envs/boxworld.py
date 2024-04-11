@@ -92,7 +92,7 @@ class BoxWorldEnv(gym.Env):
 
     @danger.setter
     def danger(self, value):
-        self._danger = np.empty((1,2)) if value is None else np.array(value)
+        self._danger = -np.ones((1,2)) if value is None else np.array(value)
         assert self._danger.shape[1]==2, f'Danger grids must have shape \
                                           (N, 2); instead they are shape \
                                           {self._danger.shape}'
@@ -100,7 +100,7 @@ class BoxWorldEnv(gym.Env):
     @obstacles.setter
     def obstacles(self, value):
         if value is None:
-            self._obstacles = np.empty((1,2))
+            self._obstacles = -np.ones((1,2))
         else:
             self._obstacles = np.array(value)
 
@@ -411,8 +411,12 @@ class BoxWorldEnv(gym.Env):
                         observation, info = self.reset()
 
     def visualize_policy(self, policy, intent = None, get_distribution = None):
+        self.reset()
 
-
+        st = self.get_obs()
+        if intent is not None:
+            st[-1] = intent
+            self._curr_goal = intent
         if self.window is None:
             pygame.init()
             pygame.display.init()
@@ -421,9 +425,9 @@ class BoxWorldEnv(gym.Env):
         if get_distribution is None:
             # Define how to extract action_distribution
             def get_distribution(policy, st) -> np.ndarray:
-                dist = policy.policy.get_distribution(torch.Tensor([st]))
+                dist = policy.policy.get_distribution(torch.Tensor([st]).to(device=policy.device))
                 dist =  dist.distribution.logits.exp()[0]
-                return dist.detach().numpy()
+                return dist.detach().cpu().numpy()
 
         tmp_render_mode = self.render_mode
         self.render_mode = 'rgb_array'
@@ -432,10 +436,6 @@ class BoxWorldEnv(gym.Env):
         pix_square_size = (
             self.window_size / self.size
         )  # The size of a single grid square in pixels
-
-        st = self.get_obs()
-        if intent is not None:
-            st[-1] = intent
 
         color1 = np.array((159, 43, 104))
         color2 = np.array((255, 255, 255))
@@ -456,7 +456,8 @@ class BoxWorldEnv(gym.Env):
             center = pix_square_size * (grid + 0.5)
 
             st[:2] = grid
-            action_dist = get_distribution(policy, st)
+            with torch.no_grad():
+                action_dist = get_distribution(policy, st)
             # Draw right triangle
             pygame.draw.polygon(
                 canvas,
@@ -506,7 +507,7 @@ class BoxWorldEnv(gym.Env):
 
         self.render_mode = tmp_render_mode
 
-    def visualize_demo(self, trajectory)
+    def visualize_demo(self, trajectory):
         self.reset()
         init_state = trajectory.obs[0][:2 * (self.n_targets+1)]
         self.occupied_grids = init_state.reshape(-1, 2)

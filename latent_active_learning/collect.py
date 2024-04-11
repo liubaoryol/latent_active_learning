@@ -113,7 +113,6 @@ def train_expert(env_name, kwargs, n_epoch=1e6):
         ent_coef = 0.2,
         learning_rate = 0.01
         )
-    model.rollout_buffer
     model.learn(total_timesteps=n_epoch, progress_bar=True)
     return model
 
