@@ -75,6 +75,9 @@ def main(_config,
 
     elif student_type=='tamada':
         student = Tamada(rollouts, gini, option_dim=n_targets)
+    
+    elif student_type=='action_intent_entropy':
+        student = ActionIntentEntropyBased(rollouts, gini, option_dim=n_targets)
 
     # if query_percent is not None:
     #     student = Random(rollouts, gini, option_dim=n_targets, query_percent=query_percent)
@@ -99,7 +102,7 @@ def main(_config,
         results_dir='results_fixed_order_targets',
         wandb_run=run
         )
-    if student_type=='action_entropy':
+    if student_type in ['action_entropy', 'action_intent_entropy']:
         student.set_policy(hbc)
     hbc.train(n_epochs)
 

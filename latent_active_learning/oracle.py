@@ -1,3 +1,5 @@
+import os
+import pickle
 import logging
 import dataclasses
 import numpy as np
@@ -14,13 +16,43 @@ from .data.utils import augmentTrajectoryWithLatent
 class Oracle:
     expert_trajectories: List[TrajectoryWithRew]
     true_options: List[np.ndarray]
+    expert_trajectories_test: List[TrajectoryWithRew] = None
+    true_options_test: List[np.ndarray] = None
 
     def query(self, trajectory_num, position_num):
         return self.true_options[trajectory_num][position_num]
     
     def __str__(self):
         return f'Oracle(num_demos={len(self.expert_trajectories)})'
+    
+    def save(self, path):
+        if not os.path.exists(path):
+            os.mkdir(path)
+        for name, attribute in self.__dict__.items():
+            name += '.pkl'
+            with open("/".join((path, name)), "wb") as f:
+                pickle.dump(attribute, f)
 
+    @classmethod
+    def load(cls, path):
+        my_model = {}
+        for name in cls.__annotations__:
+            
+            with open("/".join((path, name+'.pkl')), "rb") as f:
+                my_model[name] = pickle.load(f)
+        return cls(**my_model)
+
+    def __eq__(self, other):        
+        A = other.expert_trajectories == self.expert_trajectories
+        B = other.expert_trajectories_test == self.expert_trajectories_test
+        C = np.all([(opts == other_opts).all() for opts, other_opts
+                    in zip(self.true_options, other.true_options)])
+        if self.true_options_test is None:
+            D = other.true_options_test is None
+        else:
+            D = np.all([(opts == other_opts).all() for opts, other_opts 
+                        in zip(self.true_options_test, other.true_options_test)])
+        return A and B and C and D
 
 @dataclasses.dataclass
 class CuriousPupil(ABC):
@@ -172,6 +204,12 @@ class IntentEntropyBased(CuriousPupil):
 
 @dataclasses.dataclass
 class ActionIntentEntropyBased(CuriousPupil):
+    mixing: float=0.5
+    policy: object = None
+
+    def set_policy(self, model):
+        self.policy = model.policy_lo.policy
+
     def query_oracle(self):
         """Will query oracle on all trajectories and states, randomly"""
         for idx in range(len(self.demos)):
@@ -179,7 +217,31 @@ class ActionIntentEntropyBased(CuriousPupil):
         self._num_queries += 1
 
     def _query_single_demo(self, idx):
-        pass
+
+        demo = self.demos[idx]
+        n = list(range(len(demo.obs)))
+        entropies = np.zeros(len(demo.obs))
+        unlabeled_idxs = np.array(n)[~demo._is_latent_estimated[1:]]
+
+        entropy_intent = demo.entropy()
+
+        if unlabeled_idxs.size > 0:
+            observations = demo.obs[unlabeled_idxs]
+            options = demo.latent[unlabeled_idxs+1]
+            import torch
+            with torch.no_grad():
+                lo_input = obs_as_tensor(
+                    np.concatenate([observations, options], axis=1),
+                    device=self.policy.device)
+                entropy_action = self.policy.get_distribution(lo_input).entropy()
+
+                entropies[unlabeled_idxs] = entropy_action * self.mixing   
+        
+        entropies += (1-self.mixing) * entropy_intent[1:]
+
+        top_entropy_idx = entropies.argmax()
+        option = self.oracle.query(idx, top_entropy_idx)
+        demo.set_true_latent(top_entropy_idx, option)
 
 
 @dataclasses.dataclass
@@ -190,3 +252,4 @@ class Tamada(CuriousPupil):
 
     def _query_single_demo(self, idx):
         pass
+
