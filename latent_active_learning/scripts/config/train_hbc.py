@@ -69,7 +69,7 @@ def rw4t_discrete():
 @train_hbc_ex.named_config
 def discrete_2targets_boxworld():
     env_name = "BoxWorld-v0"
-    n_epochs = 200
+    n_epochs = 100
     n_targets = 2
     use_wandb=True
     filter_state_until = -1 - n_targets
@@ -87,7 +87,7 @@ def discrete_2targets_boxworld():
 @train_hbc_ex.named_config
 def discrete_3targets_boxworld():
     env_name = "BoxWorld-v0"
-    n_epochs = 100
+    n_epochs = 1000
     n_targets = 3
     use_wandb=True
     filter_state_until = -1 - n_targets

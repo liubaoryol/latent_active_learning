@@ -214,9 +214,9 @@ class HBC:
         # self.curious_student.query_oracle()
 
         for epoch in range(n_epochs):
-            if not epoch % 5:
-                # query every 5 steps
-                self.curious_student.query_oracle()
+            # if not epoch % 5:
+            #     # query every 5 steps
+            self.curious_student.query_oracle()
             with torch.no_grad():
                 options = [demo.latent for demo in self.curious_student.demos]
                 f = lambda x: np.linalg.norm(

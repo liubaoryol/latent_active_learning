@@ -78,7 +78,7 @@ class Oracle:
             np.mean(returns_t),
             np.std(returns_t)
         ))
-        
+
 @dataclasses.dataclass
 class CuriousPupil(ABC):
     demos: List[TrajectoryWithLatent]
@@ -90,7 +90,7 @@ class CuriousPupil(ABC):
         self.demos = augmentTrajectoryWithLatent(self.demos, self.option_dim)
 
     @abstractmethod
-    def query_oracle(self):
+    def query_oracle(self, num_queries):
         raise NotImplementedError
 
     def __str__(self):
@@ -101,8 +101,10 @@ class CuriousPupil(ABC):
 class Random(CuriousPupil):
     query_percent: int = 0
     
-    def query_oracle(self):
+    def query_oracle(self, num_queries=1):
         """Will query oracle on all trajectories and states at the rate of `query_percent`"""
+        if self._num_queries > 0:
+            return 
         for idx in range(len(self.demos)):
             self._query_single_demo(idx)
         self._num_queries += 1
@@ -118,8 +120,10 @@ class Random(CuriousPupil):
 class QueryCapLimit(CuriousPupil):
     query_demo_cap: int = 0
     
-    def query_oracle(self):
+    def query_oracle(self, num_queries=1):
         """Will query oracle on all trajectories `query_demo_cap` number of times"""
+        if self._num_queries > 0:
+            return 
         for idx in range(len(self.demos)):
             self._query_single_demo(idx)
         self._num_queries += 1
@@ -138,7 +142,7 @@ class EfficientStudent(CuriousPupil):
     """Student that accesses all info, but stores only the
     states at the change of the latent state"""
     
-    def query_oracle(self):
+    def query_oracle(self, num_queries=1):
         for idx in range(len(self.demos)):
             self._query_single_demo(idx)
         self._num_queries += 1
@@ -157,10 +161,15 @@ class EfficientStudent(CuriousPupil):
 
 @dataclasses.dataclass
 class IterativeRandom(CuriousPupil):
-    def query_oracle(self):
+
+    def query_oracle(self, num_queries=1):
+        for _ in range(num_queries):
+            self._query_oracle()
+
+    def _query_oracle(self):
         """Will query oracle on all trajectories and states, randomly"""
-        for idx in range(len(self.demos)):
-            self._query_single_demo(idx)
+        idx = np.random.randint(len(self.demos))
+        self._query_single_demo(idx)
         self._num_queries += 1
 
     def _query_single_demo(self, idx):
@@ -183,20 +192,36 @@ class ActionEntropyBased(CuriousPupil):
     def set_policy(self, model):
         self.policy = model.policy_lo.policy
 
-    def query_oracle(self):
+    def query_oracle(self, num_queries=1):
+        for _ in range(num_queries):
+            self._query_oracle()
+        
+    def _query_oracle(self):
         """Will query oracle on all trajectories and states, randomly"""
         # TODO: most probably it is better to have a
         # buffer thats quashes all the demos into one
+        top_entropies = []
+        top_entropies_idx = []
         for idx in range(len(self.demos)):
-            self._query_single_demo(idx)
-        self._num_queries += 1
+            ent_idx, ent = self._get_info_single_demo(idx)
+            top_entropies.append(ent)
+            top_entropies_idx.append(ent_idx)
 
-    def _query_single_demo(self, idx):
+        idx_traj = np.argmax(top_entropies)
+        top_entropy_idx = top_entropies_idx[idx_traj]
+        if top_entropy_idx is not None:
+            option = self.oracle.query(idx_traj, top_entropy_idx)
+            demo = self.demos[idx_traj]
+            demo.set_true_latent(top_entropy_idx, option)
+            self._num_queries += 1
+
+    def _get_info_single_demo(self, idx):
         # Get options, which are calculated using Viterbi
         demo = self.demos[idx]
         n = list(range(len(demo.obs)))
         unlabeled_idxs = np.array(n)[~demo._is_latent_estimated[1:]]
-
+        top_entropy_idx = None
+        top_entropy = 0
         if unlabeled_idxs.size > 0:
             observations = demo.obs[unlabeled_idxs]
             options = demo.latent[unlabeled_idxs+1]
@@ -206,26 +231,46 @@ class ActionEntropyBased(CuriousPupil):
                     np.concatenate([observations, options], axis=1),
                     device=self.policy.device)
                 entropy = self.policy.get_distribution(lo_input).entropy()
-                top_entropy_idx = entropy.topk(1)[1].item()
+                top_entropy, top_entropy_idx = entropy.topk(1)
+                top_entropy = top_entropy.item()
+                top_entropy_idx = top_entropy_idx.item()
 
             top_entropy_idx = unlabeled_idxs[top_entropy_idx]
-            option = self.oracle.query(idx, top_entropy_idx)
-            demo.set_true_latent(top_entropy_idx, option)
+    
+        return top_entropy_idx, top_entropy
+
 
 @dataclasses.dataclass
 class IntentEntropyBased(CuriousPupil):
-    def query_oracle(self):
-        """Will query oracle on all trajectories and states, randomly"""
-        for idx in range(len(self.demos)):
-            self._query_single_demo(idx)
-        self._num_queries += 1
 
-    def _query_single_demo(self, idx):
+    def query_oracle(self, num_queries=1):
+        for _ in range(num_queries):
+            self._query_oracle()
+
+    def _query_oracle(self):
+        """Will query oracle on all trajectories and states, randomly"""
+        
+        top_entropies = []
+        top_entropies_idx = []
+        for idx in range(len(self.demos)):
+            ent_idx, ent = self._get_info_single_demo(idx)
+            top_entropies.append(ent)
+            top_entropies_idx.append(ent_idx)
+        
+        idx_traj = np.argmax(top_entropies)
+        top_entropy_idx = top_entropies_idx[idx_traj]
+        if top_entropy_idx is not None:
+            option = self.oracle.query(idx_traj, top_entropy_idx)
+            demo = self.demos[idx_traj]
+            demo.set_true_latent(top_entropy_idx, option)
+            self._num_queries += 1
+
+    def _get_info_single_demo(self, idx):
         demo = self.demos[idx]
         entropy = demo.entropy()
         top_entropy_idx = entropy[1:].argmax()
-        option = self.oracle.query(idx, top_entropy_idx)
-        demo.set_true_latent(top_entropy_idx, option)
+        top_entropy = entropy[1+top_entropy_idx]
+        return top_entropy_idx, top_entropy
 
 @dataclasses.dataclass
 class ActionIntentEntropyBased(CuriousPupil):
@@ -235,13 +280,30 @@ class ActionIntentEntropyBased(CuriousPupil):
     def set_policy(self, model):
         self.policy = model.policy_lo.policy
 
-    def query_oracle(self):
-        """Will query oracle on all trajectories and states, randomly"""
-        for idx in range(len(self.demos)):
-            self._query_single_demo(idx)
-        self._num_queries += 1
+    def query_oracle(self, num_queries=1):
+        for _ in range(num_queries):
+            self._query_oracle()
 
-    def _query_single_demo(self, idx):
+    def _query_oracle(self):
+        """Will query oracle on all trajectories and states, randomly"""
+        top_entropies = []
+        top_entropies_idx = []
+
+        for idx in range(len(self.demos)):
+            ent_idx, ent = self._get_info_single_demo(idx)
+            top_entropies.append(ent)
+            top_entropies_idx.append(ent_idx)
+        
+        idx_traj = np.argmax(top_entropies)
+        top_entropy_idx = top_entropies_idx[idx_traj]
+        
+        if top_entropy_idx is not None:
+            option = self.oracle.query(idx_traj, top_entropy_idx)
+            demo = self.demos[idx_traj]
+            demo.set_true_latent(top_entropy_idx, option)
+            self._num_queries += 1
+
+    def _get_info_single_demo(self):
 
         demo = self.demos[idx]
         n = list(range(len(demo.obs)))
@@ -265,13 +327,12 @@ class ActionIntentEntropyBased(CuriousPupil):
         entropies += (1-self.mixing) * entropy_intent[1:]
 
         top_entropy_idx = entropies.argmax()
-        option = self.oracle.query(idx, top_entropy_idx)
-        demo.set_true_latent(top_entropy_idx, option)
+        return top_entropy_idx, entropies[top_entropy_idx]
 
 
 @dataclasses.dataclass
 class Tamada(CuriousPupil):
-    def query_oracle(self):
+    def query_oracle(self, num_queries):
         """Will query oracle on all trajectories and states, randomly"""
         self._num_queries += 1
 
