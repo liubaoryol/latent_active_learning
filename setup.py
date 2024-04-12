@@ -1,4 +1,4 @@
-from distutils.core import setup'
+from distutils.core import setup
 import setuptools
 # Python packaging done using instructions from
 # https://the-hitchhikers-guide-to-packaging.readthedocs.io/en/latest/index.html
