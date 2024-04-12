@@ -508,7 +508,6 @@ class BoxWorldEnv(gym.Env):
         self.render_mode = tmp_render_mode
 
     def visualize_demo(self, trajectory):
-        self.reset()
         init_state = trajectory.obs[0][:2 * (self.n_targets+1)]
         self.occupied_grids = init_state.reshape(-1, 2)
         self.render()
