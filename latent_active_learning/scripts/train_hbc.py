@@ -1,4 +1,5 @@
 import shutil
+import os
 import wandb
 import gymnasium as gym
 from datetime import datetime
@@ -14,7 +15,7 @@ from latent_active_learning.oracle import IntentEntropyBased
 from latent_active_learning.oracle import ActionEntropyBased
 from latent_active_learning.oracle import ActionIntentEntropyBased
 from latent_active_learning.oracle import EfficientStudent
-
+from latent_active_learning.oracle import Supervised, Unsupervised
 
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
@@ -66,8 +67,11 @@ def main(_config,
     elif student_type=='intent_entropy':
         student = IntentEntropyBased(gini, option_dim=n_targets)
 
-    elif student_type=='tamada':
-        student = Tamada(gini, option_dim=n_targets)
+    elif student_type=='supervised':
+        student = Supervised(gini, option_dim=n_targets)
+
+    elif student_type=='unsupervised':
+        student = Unsupervised(gini, option_dim=n_targets)
     
     elif student_type=='action_intent_entropy':
         student = ActionIntentEntropyBased(gini, option_dim=n_targets)
@@ -90,7 +94,8 @@ def main(_config,
 
     if student_type in ['action_entropy', 'action_intent_entropy']:
         student.set_policy(hbc)
-    
+
+
     if n_epochs is None:
         delay_after_query_exhaustion = 50
         n_epochs = gini.max_queries + delay_after_query_exhaustion
@@ -100,3 +105,10 @@ def main(_config,
     # Log table with metrics
     if run:
         run.log({"metrics/metrics": hbc._logger.metrics_table})
+        table = hbc._logger.metrics_table.get_dataframe()
+        base_path = os.path.join(os.getcwd(), f'csv_metrics/{path}/')
+        if not os.path.exists(base_path):
+            os.makedirs(base_path)
+        file_name = f'{base_path}hbc_{student_type}{timestamp()}.csv'
+        table.to_csv(file_name, header=True, index=False)
+        wandb.save(file_name, base_path=os.getcwd())

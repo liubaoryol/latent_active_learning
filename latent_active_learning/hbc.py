@@ -50,12 +50,14 @@ class HBCLoggerPartial(bc.BCLogger):
 class HBCLogger:
     """Utility class to help logging information relevant to Behavior Cloning."""
 
-    def __init__(self, logger: imit_logger.HierarchicalLogger, wandb_run=None):
+    def __init__(self, logger: imit_logger.HierarchicalLogger, wandb_run=None,
+                 student_type: str=None):
         """Create new BC logger.
 
         Args:
             logger: The logger to feed all the information to.
         """
+        self.student_type = student_type
         self._logger = logger
         self._tensorboard_step = 0
         self._current_epoch = 0
@@ -68,6 +70,8 @@ class HBCLogger:
         self.wandb_run = wandb_run
         self.metrics_table = wandb.Table(
             columns=[
+                'model',
+                'student_type',
                 'epoch',
                 'hamming_train',
                 'hamming_test',
@@ -106,6 +110,8 @@ class HBCLogger:
         self._tensorboard_step += 1
 
         self.metrics_table.add_data(
+            'hbc',
+            self.student_type,
             epoch_num,
             hamming_loss,
             hamming_loss_test,
@@ -197,7 +203,8 @@ class HBC:
             )
 
         new_logger = imit_logger.configure(logging_dir, ["stdout"])
-        self._logger = HBCLogger(new_logger, wandb_run)
+        student_type = self.curious_student.student_type
+        self._logger = HBCLogger(new_logger, wandb_run, student_type)
 
         obs_space = env.observation_space
         new_lo = np.concatenate([obs_space.low, [0]])
@@ -243,7 +250,7 @@ class HBC:
 
             self.curious_student.query_oracle()
             # Save checkpoint every 100 iterations
-            if not (epoch+1) % 100:
+            if not epoch % 100:
                 self.save(ckpt_num=epoch)
 
     def transitions(self, expert_demos):

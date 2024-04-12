@@ -128,7 +128,8 @@ class CuriousPupil(ABC):
 @dataclasses.dataclass
 class Random(CuriousPupil):
     query_percent: int = 0
-    
+    student_type: str = f'query_percent{query_percent}'
+
     def query_oracle(self, num_queries=1):
         """Will query oracle on all trajectories and states at the rate of `query_percent`"""
         if self._num_queries > 0:
@@ -148,6 +149,7 @@ class Random(CuriousPupil):
 @dataclasses.dataclass
 class QueryCapLimit(CuriousPupil):
     query_demo_cap: int = 0
+    student_type: str = f'query_cap{query_demo_cap}'
     
     def query_oracle(self, num_queries=1):
         """Will query oracle on all trajectories `query_demo_cap` number of times"""
@@ -171,7 +173,8 @@ class QueryCapLimit(CuriousPupil):
 class EfficientStudent(CuriousPupil):
     """Student that accesses all info, but stores only the
     states at the change of the latent state"""
-    
+    student_type: str = 'efficient'
+
     def query_oracle(self, num_queries=1):
         for idx in range(len(self.demos)):
             self._query_single_demo(idx)
@@ -192,7 +195,7 @@ class EfficientStudent(CuriousPupil):
 
 @dataclasses.dataclass
 class IterativeRandom(CuriousPupil):
-
+    student_type: str = 'iterative_random'
     def query_oracle(self, num_queries=1):
         for _ in range(num_queries):
             self._query_oracle()
@@ -220,6 +223,7 @@ class IterativeRandom(CuriousPupil):
 @dataclasses.dataclass
 class ActionEntropyBased(CuriousPupil):
     policy: object = None
+    student_type: str = 'action_entropy'
 
     def set_policy(self, model):
         self.policy = model.policy_lo.policy
@@ -275,6 +279,7 @@ class ActionEntropyBased(CuriousPupil):
 
 @dataclasses.dataclass
 class IntentEntropyBased(CuriousPupil):
+    student_type: str = 'intent_entropy'
 
     def query_oracle(self, num_queries=1):
         for _ in range(num_queries):
@@ -310,6 +315,7 @@ class IntentEntropyBased(CuriousPupil):
 class ActionIntentEntropyBased(CuriousPupil):
     mixing: float=0.5
     policy: object = None
+    student_type: str = 'mixed_action_entropy'
 
     def set_policy(self, model):
         self.policy = model.policy_lo.policy
@@ -366,11 +372,14 @@ class ActionIntentEntropyBased(CuriousPupil):
 
 
 @dataclasses.dataclass
-class Tamada(CuriousPupil):
-    def query_oracle(self, num_queries=None):
-        """Will query oracle on all trajectories and states, randomly"""
-        self._num_queries += 1
+class Unsupervised(Random):
+    def __post_init__(self):
+        self.student_type = 'unsupervised'
+        self.query_percent = 0
 
-    def _query_single_demo(self, idx):
-        pass
+@dataclasses.dataclass
+class Supervised(Random):
+    def __post_init__(self):
+        self.student_type = 'supervised'
+        self.query_percent = 1
 
