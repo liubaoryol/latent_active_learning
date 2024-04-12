@@ -93,7 +93,7 @@ def discrete_3targets_boxworld():
         'size': 10,
         'n_targets': n_targets,
         'allow_variable_horizon': True,
-        'fixed_targets': [ [0, 0], [9, 9], [0, 9] ],
+        'fixed_targets': [ [0, 0], [9, 9], [4, 5] ],
         'latent_distribution': lambda x: 0,
         'render_mode': None
         }

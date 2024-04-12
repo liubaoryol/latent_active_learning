@@ -15,7 +15,7 @@ from latent_active_learning.oracle import IntentEntropyBased
 from latent_active_learning.oracle import ActionEntropyBased
 from latent_active_learning.oracle import ActionIntentEntropyBased
 from latent_active_learning.oracle import EfficientStudent
-from latent_active_learning.oracle import Supervised, Unsupervised
+from latent_active_learning.oracle import Supervised, Unsupervised, IterativeRandom
 
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
@@ -30,7 +30,7 @@ def main(_config,
          efficient_student=False,
          query_percent=None,
          query_cap=None,
-         exp_identifier=None,
+         exp_identifier='',
          n_epochs=None):
 
     path = get_dir_name(env_name, kwargs).split('/')[1]
@@ -39,7 +39,7 @@ def main(_config,
 
     if use_wandb:
         run = wandb.init(
-            project=f'[{exp_identifier}]{path}',
+            project=f'{exp_identifier}{path}',
             name='HBC_{}{}'.format(
                 student_type,
                 timestamp(),

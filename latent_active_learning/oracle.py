@@ -344,7 +344,7 @@ class ActionIntentEntropyBased(CuriousPupil):
             self.save_query(idx_traj, top_entropy_idx)
             self._num_queries += 1
 
-    def _get_info_single_demo(self):
+    def _get_info_single_demo(self, idx):
 
         demo = self.demos[idx]
         n = list(range(len(demo.obs)))
@@ -374,12 +374,14 @@ class ActionIntentEntropyBased(CuriousPupil):
 @dataclasses.dataclass
 class Unsupervised(Random):
     def __post_init__(self):
+        super().__post_init__()
         self.student_type = 'unsupervised'
         self.query_percent = 0
 
 @dataclasses.dataclass
 class Supervised(Random):
     def __post_init__(self):
+        super().__post_init__()
         self.student_type = 'supervised'
         self.query_percent = 1
 

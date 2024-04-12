@@ -99,18 +99,18 @@ def get_expert(env_name, kwargs, n_epoch=1e6):
     return model
 
 def train_expert(env_name, kwargs, n_epoch=1e6):
-    n_epoch = 1e7
+    n_epoch = 5e5
     vec_env = get_environment(env_name, full_obs=True, kwargs=kwargs)
-    batch_size = 1024
-    rollout_buffer_size = 10240
+    # batch_size = 1024
+    # rollout_buffer_size = 10240
     model = PPO(
         "MlpPolicy",
         vec_env,
         verbose=1,
-        batch_size = batch_size,
-        n_steps = rollout_buffer_size,
-        ent_coef = 0.2,
-        learning_rate = 0.01
+        # batch_size = batch_size,
+        # n_steps = rollout_buffer_size,
+        # ent_coef = 0.2,
+        # learning_rate = 0.01
         )
     model.learn(total_timesteps=n_epoch, progress_bar=True)
     return model

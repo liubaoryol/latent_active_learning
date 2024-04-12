@@ -514,6 +514,7 @@ class BoxWorldEnv(gym.Env):
         self.render()
         for a in trajectory.acts:
             self.step(a)
+        self.close()
         
 # ############## COLLECT DEMO
 # # import gymnasium as gym
