@@ -1,15 +1,20 @@
-from datetime import datetime
-import gymnasium as gym
-from stable_baselines3.common.monitor import Monitor
+import shutil
 import wandb
+import gymnasium as gym
+from datetime import datetime
+from stable_baselines3.common.monitor import Monitor
 
 from latent_active_learning.scripts.config.train_hbc import train_hbc_ex
 from latent_active_learning.scripts.utils import get_demos
+from latent_active_learning.collect import get_dir_name
 from latent_active_learning.wrappers.latent_wrapper import FilterLatent
 from latent_active_learning.hbc import HBC
-from latent_active_learning.oracle import Random, Oracle, QueryCapLimit, EfficientStudent
-from latent_active_learning.oracle import *
-from latent_active_learning.collect import get_dir_name
+from latent_active_learning.oracle import Oracle, Random, QueryCapLimit
+from latent_active_learning.oracle import IntentEntropyBased
+from latent_active_learning.oracle import ActionEntropyBased
+from latent_active_learning.oracle import ActionIntentEntropyBased
+from latent_active_learning.oracle import EfficientStudent
+
 
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 
@@ -19,21 +24,21 @@ def main(_config,
          n_targets,
          filter_state_until,
          kwargs,
-         n_epochs,
          use_wandb,
          student_type=None,
          efficient_student=False,
          query_percent=None,
          query_cap=None,
-         exp_identifier=None):
-    
-    # error_msg = 'Must define one and only one of `num_queries` or `query_percent`'
-    # assert query_percent is None or query_cap is None, error_msg
-    # assert not (query_percent is None and query_cap is None), error_msg
+         exp_identifier=None,
+         n_epochs=None):
+
+    path = get_dir_name(env_name, kwargs).split('/')[1]
+    gini = Oracle.load('./expert_trajs/{}'.format(path))
+    rollouts = gini.expert_trajectories
 
     if use_wandb:
         run = wandb.init(
-            project=f'[{exp_identifier}]{env_name[:-3]}-size{kwargs["size"]}-targets{n_targets}',
+            project=f'[{exp_identifier}]{path}',
             name='HBC_{}{}'.format(
                 student_type,
                 timestamp(),
@@ -45,31 +50,27 @@ def main(_config,
     else:
         run = None
 
-    path = get_dir_name(env_name, kwargs).split('/')[1]
-    gini = Oracle.load('./expert_trajs/{}'.format(path))
-    rollouts = gini.expert_trajectories
-
     # Create student:
     if student_type=='random':
-        student = Random(rollouts, gini, option_dim=n_targets, query_percent=query_percent)
+        student = Random(gini, option_dim=n_targets, query_percent=query_percent)
 
     elif student_type=='query_cap':
-        student = QueryCapLimit(rollouts, gini, option_dim=n_targets, query_demo_cap=query_cap)
+        student = QueryCapLimit(gini, option_dim=n_targets, query_demo_cap=query_cap)
 
     elif student_type=='iterative_random':
-        student = IterativeRandom(rollouts, gini, option_dim=n_targets)
+        student = IterativeRandom(gini, option_dim=n_targets)
 
     elif student_type=='action_entropy':
-        student = ActionEntropyBased(rollouts, gini, option_dim=n_targets)
+        student = ActionEntropyBased(gini, option_dim=n_targets)
 
     elif student_type=='intent_entropy':
-        student = IntentEntropyBased(rollouts, gini, option_dim=n_targets)
+        student = IntentEntropyBased(gini, option_dim=n_targets)
 
     elif student_type=='tamada':
-        student = Tamada(rollouts, gini, option_dim=n_targets)
+        student = Tamada(gini, option_dim=n_targets)
     
     elif student_type=='action_intent_entropy':
-        student = ActionIntentEntropyBased(rollouts, gini, option_dim=n_targets)
+        student = ActionIntentEntropyBased(gini, option_dim=n_targets)
 
 
     env = gym.make(env_name, **kwargs)
@@ -86,8 +87,16 @@ def main(_config,
         results_dir='results_fixed_order_targets',
         wandb_run=run
         )
+
     if student_type in ['action_entropy', 'action_intent_entropy']:
         student.set_policy(hbc)
+    
+    if n_epochs is None:
+        delay_after_query_exhaustion = 50
+        n_epochs = gini.max_queries + delay_after_query_exhaustion
+    
     hbc.train(n_epochs)
 
-    print(f'Student queried {hbc.curious_student._num_queries} amount of times')
+    # Log table with metrics
+    if run:
+        run.log({"metrics/metrics": hbc._logger.metrics_table})

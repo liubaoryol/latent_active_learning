@@ -7,7 +7,6 @@ train_hbc_ex = sacred.Experiment("train_hbc", interactive=True)
 @train_hbc_ex.named_config
 def rw4t_discrete():
     env_name = "BoxWorld-v0"
-    n_epochs = 200
     n_targets = 6
     use_wandb=True
     filter_state_until = -1 - n_targets
@@ -69,7 +68,6 @@ def rw4t_discrete():
 @train_hbc_ex.named_config
 def discrete_2targets_boxworld():
     env_name = "BoxWorld-v0"
-    n_epochs = 100
     n_targets = 2
     use_wandb=True
     filter_state_until = -1 - n_targets
@@ -87,7 +85,6 @@ def discrete_2targets_boxworld():
 @train_hbc_ex.named_config
 def discrete_3targets_boxworld():
     env_name = "BoxWorld-v0"
-    n_epochs = 1000
     n_targets = 3
     use_wandb=True
     filter_state_until = -1 - n_targets
@@ -104,7 +101,6 @@ def discrete_3targets_boxworld():
 @train_hbc_ex.named_config
 def continuous_env():
     env_name = "BoxWorld-continuous-v0"
-    n_epochs = 100
     use_wandb=True
     num_demos=100
 
@@ -115,7 +111,6 @@ def efficient_learner():
 @train_hbc_ex.named_config
 def boxworld_4targets():
     n_targets = 4
-    n_epochs = 50
     kwargs = {
         'size': 10,
         'n_targets': n_targets,

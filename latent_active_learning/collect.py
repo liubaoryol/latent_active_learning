@@ -15,8 +15,7 @@ def get_dir_name(env_name, kwargs):
     experts_path = 'expert_params/'
     size = kwargs['size']
     n_targs = kwargs['n_targets']
-    fixed = 'fixed' if kwargs['fixed_targets'] is not None else ''
-    return f'{experts_path}{env_name}_size_{size}_n-targets_{n_targs}{fixed}'
+    return f'{experts_path}{env_name[:-3]}-size{size}-targets{n_targs}'
 
 def get_environment(
     env_name,

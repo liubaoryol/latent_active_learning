@@ -12,6 +12,11 @@ from .data.types import TrajectoryWithLatent
 from .data.utils import augmentTrajectoryWithLatent
 
 
+@dataclasses.dataclass(frozen=True)
+class QueryIdentifier:
+    traj_num: int
+    idx_query: int
+
 @dataclasses.dataclass
 class Oracle:
     expert_trajectories: List[TrajectoryWithRew]
@@ -32,6 +37,13 @@ class Oracle:
             name += '.pkl'
             with open("/".join((path, name)), "wb") as f:
                 pickle.dump(attribute, f)
+
+    @property
+    def max_queries(self) -> int:
+        num_queries = 0
+        for demo in self.expert_trajectories:
+            num_queries+=len(demo.obs)
+        return num_queries
 
     @classmethod
     def load(cls, path):
@@ -81,21 +93,37 @@ class Oracle:
 
 @dataclasses.dataclass
 class CuriousPupil(ABC):
-    demos: List[TrajectoryWithLatent]
     oracle: Oracle
     option_dim: int
     
     def __post_init__(self):
         self._num_queries = 0
-        self.demos = augmentTrajectoryWithLatent(self.demos, self.option_dim)
-
+        self.list_queries = []
+        self.demos = augmentTrajectoryWithLatent(
+            self.oracle.expert_trajectories,
+            self.option_dim
+        )
+        self.demos_test = augmentTrajectoryWithLatent(
+            self.oracle.expert_trajectories_test,
+            self.option_dim
+        )
     @abstractmethod
     def query_oracle(self, num_queries):
         raise NotImplementedError
 
+    def save_query(self, traj_num, idx_query):
+        self.list_queries.append(QueryIdentifier(traj_num, idx_query))
+
     def __str__(self):
         return f'Student(num_demos={len(self.demos)}, option_dim={self.option_dim})'
-    
+
+    def save_queries(self, path):
+        if not os.path.exists(path):
+            os.makedirs(path)
+        name = 'list_queries.pkl'
+        attribute = self.__dict__['list_queries']
+        with open("/".join((path, name)), "wb") as f:
+            pickle.dump(attribute, f)
 
 @dataclasses.dataclass
 class Random(CuriousPupil):
@@ -115,6 +143,7 @@ class Random(CuriousPupil):
             if np.random.uniform() <= self.query_percent:
                 option = self.oracle.query(idx, j)
                 demo.set_true_latent(j, option)
+                self.save_query(idx, j)
 
 @dataclasses.dataclass
 class QueryCapLimit(CuriousPupil):
@@ -135,6 +164,7 @@ class QueryCapLimit(CuriousPupil):
         for j in idxs:
             option = self.oracle.query(idx, j)
             demo.set_true_latent(j, option)
+            self.save_query(idx, j)
 
 
 @dataclasses.dataclass
@@ -157,6 +187,7 @@ class EfficientStudent(CuriousPupil):
             if option!=option_1:
                 demo.set_true_latent(j, option)
                 option_1=option
+                self.save_query(idx, j)
 
 
 @dataclasses.dataclass
@@ -181,6 +212,7 @@ class IterativeRandom(CuriousPupil):
             j = np.random.choice(unlabeled_idxs)
             option = self.oracle.query(idx, j)
             demo.set_true_latent(j, option)
+            self.save_query(idx, j)
         else:
             logging.warn("All latent states in demo have been queried")
 
@@ -213,6 +245,7 @@ class ActionEntropyBased(CuriousPupil):
             option = self.oracle.query(idx_traj, top_entropy_idx)
             demo = self.demos[idx_traj]
             demo.set_true_latent(top_entropy_idx, option)
+            self.save_query(idx_traj, top_entropy_idx)
             self._num_queries += 1
 
     def _get_info_single_demo(self, idx):
@@ -263,6 +296,7 @@ class IntentEntropyBased(CuriousPupil):
             option = self.oracle.query(idx_traj, top_entropy_idx)
             demo = self.demos[idx_traj]
             demo.set_true_latent(top_entropy_idx, option)
+            self.save_query(idx_traj, top_entropy_idx)
             self._num_queries += 1
 
     def _get_info_single_demo(self, idx):
@@ -301,6 +335,7 @@ class ActionIntentEntropyBased(CuriousPupil):
             option = self.oracle.query(idx_traj, top_entropy_idx)
             demo = self.demos[idx_traj]
             demo.set_true_latent(top_entropy_idx, option)
+            self.save_query(idx_traj, top_entropy_idx)
             self._num_queries += 1
 
     def _get_info_single_demo(self):
@@ -332,7 +367,7 @@ class ActionIntentEntropyBased(CuriousPupil):
 
 @dataclasses.dataclass
 class Tamada(CuriousPupil):
-    def query_oracle(self, num_queries):
+    def query_oracle(self, num_queries=None):
         """Will query oracle on all trajectories and states, randomly"""
         self._num_queries += 1
 

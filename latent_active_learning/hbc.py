@@ -1,12 +1,12 @@
 import torch
 import wandb
 import os
+import csv
 from datetime import datetime
 from typing import Union, Tuple, Dict, Optional
 import numpy as np
 from gymnasium import spaces
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.utils import obs_as_tensor
 from copy import deepcopy as copy
 import matplotlib.pyplot as plt
@@ -19,6 +19,8 @@ from imitation.util import logger as imit_logger
 
 from latent_active_learning.data.types import TrajectoryWithLatent
 from latent_active_learning.wrappers.latent_wrapper import TransformBoxWorldReward
+from latent_active_learning.evaluate import Evaluator
+
 
 CURR_DIR = os.getcwd()
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
@@ -64,16 +66,23 @@ class HBCLogger:
                                            lo=False,
                                            wandb_run=wandb_run)
         self.wandb_run = wandb_run
-
+        self.metrics_table = wandb.Table(
+            columns=[
+                'epoch',
+                'hamming_train',
+                'hamming_test',
+                'rollout_mean',
+                'rollout_std'
+            ])
         self._file_loc = {
-            0: 'zero.png',
-            1: 'one.png',
-            2: 'two.png',
-            3: 'three.png',
-            4: 'four.png',
-            5: 'five.png',
-            6: 'six.png',
-            7: 'seven.png'
+            0: 'images/zero.png',
+            1: 'images/one.png',
+            2: 'images/two.png',
+            3: 'images/three.png',
+            4: 'images/four.png',
+            5: 'images/five.png',
+            6: 'images/six.png',
+            7: 'images/seven.png'
         }
 
     def reset_tensorboard_steps(self):
@@ -83,30 +92,37 @@ class HBCLogger:
         self,
         epoch_num: int,
         hamming_loss: int,
+        hamming_loss_test: int,
         rollout_mean: int,
         rollout_std: int
     ):
-        self._logger.record("epoch", epoch_num)
-        self._logger.record("env/hamming_loss", hamming_loss)
+        self._logger.record("env/epoch", epoch_num)
+        self._logger.record("env/hamming_loss_train", hamming_loss)
+        self._logger.record("env/hamming_loss_test", hamming_loss_test)
         self._logger.record("env/rollout_mean", rollout_mean)
         self._logger.record("env/rollout_std", rollout_std)
 
         self._logger.dump(self._tensorboard_step)
         self._tensorboard_step += 1
 
+        self.metrics_table.add_data(
+            epoch_num,
+            hamming_loss,
+            hamming_loss_test,
+            rollout_mean,
+            rollout_std
+            )
+
         if self.wandb_run is not None:
             self.wandb_run.log({
-                "epoch": epoch_num,
+                "env/epoch": epoch_num,
                 "env/hamming_loss": hamming_loss,
+                "env/hamming_loss_test": hamming_loss_test,
                 "env/rollout_mean": rollout_mean,
                 "env/rollout_std": rollout_std
             })
 
-    def log_rollout(
-        self,
-        env,
-        model
-    ):
+    def log_rollout(self, env, model):
         if self.wandb_run is None:
             return
 
@@ -114,8 +130,8 @@ class HBCLogger:
         viz_env = copy(env.unwrapped)
         viz_env.render_mode = 'rgb_array'
         # viz_env = TransformBoxWorldReward(viz_env)
-        # Set first state, keep track of both rgb and obs for input of model
-        
+
+        # Set state, keep track of both rgb and obs for input of model        
         frame = viz_env.reset()[0]
         observations = viz_env.get_obs()[env.mask]
         states = None
@@ -152,8 +168,6 @@ class HBCLogger:
         
         print("LENGTH OF ROLLOUT IS", len(both))
         self.wandb_run.log({"rollout/video": wandb.Video(np.stack(both), fps=4)})
-        # self.wandb_run.log({"rollout/video": wandb.Video(np.stack(frames), fps=1)})
-        # self.wandb_run.log({"rollout/latent": wandb.Video(np.stack(latents), fps=1)})
 
     def __getstate__(self):
         state = self.__dict__.copy()
@@ -175,16 +189,14 @@ class HBC:
         self.option_dim = option_dim
         self.curious_student = curious_student
         self.env = env
+
         boxworld_params = f'size{env.size}-targets{env.n_targets}'
         logging_dir = os.path.join(
             CURR_DIR,
             f'{results_dir}/{boxworld_params}/{exp_identifier}_{timestamp()}/'
             )
 
-        new_logger = imit_logger.configure(logging_dir,
-                                           ["stdout", "csv", "tensorboard"]
-                                           )
-
+        new_logger = imit_logger.configure(logging_dir, ["stdout"])
         self._logger = HBCLogger(new_logger, wandb_run)
 
         obs_space = env.observation_space
@@ -209,41 +221,30 @@ class HBC:
         self.policy_hi._bc_logger = self._logger._logger_hi
         TrajectoryWithLatent.set_policy(self.policy_lo, self.policy_hi)
 
+        self.evaluator = Evaluator(self._logger, self.env)
 
     def train(self, n_epochs):
-        # self.curious_student.query_oracle()
 
         for epoch in range(n_epochs):
-            # if not epoch % 5:
-            #     # query every 5 steps
-            self.curious_student.query_oracle()
-            with torch.no_grad():
-                options = [demo.latent for demo in self.curious_student.demos]
-                f = lambda x: np.linalg.norm(
-                    (options[x].squeeze()[1:] - self.curious_student.oracle.true_options[x]), 0)/len(options[x])
-                distances = list(map(f, range(len(options))))
-            # mean_return, std_return = evaluate_policy(self, TransformBoxWorldReward(self.env), 10)
-            mean_return, std_return = evaluate_policy(self, self.env, 10)
-            self._logger.log_batch(
-                epoch_num=epoch,
-                hamming_loss=np.mean(distances),
-                rollout_mean=mean_return,
-                rollout_std=std_return
-            )
-            self._logger.log_rollout(
-                env=self.env,
-                model=self
-            )
+            self.evaluator.evaluate_and_log(
+                model=self,
+                student=self.curious_student,
+                oracle=self.curious_student.oracle,
+                epoch=epoch)
 
-            self._logger.last_mean = mean_return
-            self._logger.last_std = std_return
-            self._logger.last_01_distance = np.mean(distances)
-            
+            if not epoch % 50:
+                self._logger.log_rollout(env=self.env, model=self)
+
             transitions_lo, transitions_hi = self.transitions(self.curious_student.demos)
             self.policy_lo.set_demonstrations(transitions_lo)
             self.policy_lo.train(n_epochs=1)
             self.policy_hi.set_demonstrations(transitions_hi)
             self.policy_hi.train(n_epochs=1)
+
+            self.curious_student.query_oracle()
+            # Save checkpoint every 100 iterations
+            if not (epoch+1) % 100:
+                self.save(ckpt_num=epoch)
 
     def transitions(self, expert_demos):
         expert_lo = []
@@ -289,26 +290,22 @@ class HBC:
         actions, _ = self.policy_lo.policy.predict(lo_input)
         return actions, state
 
-    def save(self):
+    def save(self, path=None, ckpt_num: int=1):
+        base_path = os.path.join(CURR_DIR, 'checkpoints')
+        if not os.path.exists(base_path):
+            os.makedirs(base_path)
+        if path is None:
+            path = os.path.join(base_path, f'checkpoint-epoch-{ckpt_num}.tar')
         policy_lo_state = self.policy_lo.policy.state_dict()
         policy_hi_state = self.policy_hi.policy.state_dict()
-        path = os.path.join(self._logger.dir, 'model_params.tar')
         torch.save({
             'policy_lo_state': policy_lo_state,
             'policy_hi_state': policy_hi_state
             }, path)
+        if self._logger.wandb_run is not None:
+            wandb.save(path, base_path=CURR_DIR)
 
     def load(self, path):
         model_state_dict = torch.load(path)
         self.policy_lo.policy.load_state_dict(model_state_dict['policy_lo_state'])
         self.policy_hi.policy.load_state_dict(model_state_dict['policy_hi_state'])
-
-    def save_config(self):
-        # TODO: Finish function.
-        save_dict = {
-            'size': self.env.size,
-            'n_targets': self.env.n_targets,
-            'allow_variable_horizon': self.allow_variable_horizon,
-            'fixed_targets': self.env.fixed_targets
-        }
-        # TODO: Save query type and query params.
