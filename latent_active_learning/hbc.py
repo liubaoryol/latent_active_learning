@@ -239,7 +239,7 @@ class HBC:
                 oracle=self.curious_student.oracle,
                 epoch=epoch)
 
-            if not epoch % 50:
+            if not epoch % 1000:
                 self._logger.log_rollout(env=self.env, model=self)
 
             transitions_lo, transitions_hi = self.transitions(self.curious_student.demos)
