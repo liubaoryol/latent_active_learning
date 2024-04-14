@@ -10,7 +10,6 @@ def rw4t_discrete():
     n_targets = 6
     use_wandb=True
     filter_state_until = -1 - n_targets
-
     kwargs = {
         'size': 10,
         'n_targets': n_targets,
@@ -69,6 +68,7 @@ def rw4t_discrete():
 def discrete_2targets_boxworld():
     env_name = "BoxWorld-v0"
     n_targets = 2
+    n_epochs = 650
     use_wandb=True
     filter_state_until = -1 - n_targets
 
@@ -86,6 +86,7 @@ def discrete_2targets_boxworld():
 def discrete_3targets_boxworld():
     env_name = "BoxWorld-v0"
     n_targets = 3
+    n_epochs = 2000
     use_wandb=True
     filter_state_until = -1 - n_targets
 

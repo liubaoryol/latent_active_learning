@@ -118,11 +118,11 @@ class CuriousPupil(ABC):
         return f'Student(num_demos={len(self.demos)}, option_dim={self.option_dim})'
 
     def save_queries(self, path):
-        if not os.path.exists(path):
-            os.makedirs(path)
-        name = 'list_queries.pkl'
+        # if not os.path.exists(path):
+        #     os.makedirs(path)
+        
         attribute = self.__dict__['list_queries']
-        with open("/".join((path, name)), "wb") as f:
+        with open(path, "wb") as f:
             pickle.dump(attribute, f)
 
 @dataclasses.dataclass

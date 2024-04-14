@@ -112,3 +112,7 @@ def main(_config,
         file_name = f'{base_path}hbc_{student_type}{timestamp()}.csv'
         table.to_csv(file_name, header=True, index=False)
         wandb.save(file_name, base_path=os.getcwd())
+
+        file_name = file_name.split('.')[0] + 'list_queries.pkl'
+        hbc.curious_student.save_queries(base_path)
+        wandb.save(file_name, base_path=os.getcwd())
