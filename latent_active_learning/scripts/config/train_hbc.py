@@ -8,6 +8,7 @@ train_hbc_ex = sacred.Experiment("train_hbc", interactive=True)
 def rw4t_discrete():
     env_name = "BoxWorld-v0"
     n_targets = 6
+    n_epochs = 3500
     use_wandb=True
     filter_state_until = -1 - n_targets
     kwargs = {

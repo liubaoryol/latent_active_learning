@@ -118,12 +118,7 @@ class CuriousPupil(ABC):
         return f'Student(num_demos={len(self.demos)}, option_dim={self.option_dim})'
 
     def save_queries(self, path):
-        # if not os.path.exists(path):
-        #     os.makedirs(path)
-        
-        attribute = self.__dict__['list_queries']
-        with open(path, "wb") as f:
-            pickle.dump(attribute, f)
+        np.save(path, arr=self.list_queries)
 
 @dataclasses.dataclass
 class Random(CuriousPupil):

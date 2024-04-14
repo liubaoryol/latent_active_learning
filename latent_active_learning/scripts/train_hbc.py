@@ -113,6 +113,6 @@ def main(_config,
         table.to_csv(file_name, header=True, index=False)
         wandb.save(file_name, base_path=os.getcwd())
 
-        file_name = file_name.split('.')[0] + 'list_queries.pkl'
-        hbc.curious_student.save_queries(base_path)
+        file_name = file_name.split('.')[0] + '_list_queries.npy'
+        hbc.curious_student.save_queries(file_name)
         wandb.save(file_name, base_path=os.getcwd())
