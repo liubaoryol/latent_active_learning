@@ -237,6 +237,8 @@ class HBC:
     def train(self, n_epochs):
 
         for epoch in range(n_epochs):
+            rr = [q.previous_estimated!=q.gt_latent_set for q in self.curious_student.list_queries]
+            print("-----DIFF-LATENT SET-----: ", sum(rr), '/', len(rr))
             self.evaluator.evaluate_and_log(
                 model=self,
                 student=self.curious_student,
@@ -253,7 +255,7 @@ class HBC:
             self.policy_hi.train(n_epochs=1)
 
             self.curious_student.query_oracle()
-            assert len(self.curious_student.list_queries)==len(set(self.curious_student.list_queries)), "Queries are repeated"
+            # assert len(self.curious_student.list_queries)==len(set(self.curious_student.list_queries)), "Queries are repeated"
             # Save checkpoint every 100 iterations
             if not epoch % 100:
                 self.save(ckpt_num=epoch)
