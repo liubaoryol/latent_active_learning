@@ -84,6 +84,21 @@ def discrete_2targets_boxworld():
 
 
 @train_hbc_ex.named_config
+def movers():
+    env_name = "EnvMovers-v0"
+    # fixed_latent=True
+    movers_optimal=False
+    options_w_robot=False
+    state_w_robot_opts = False
+    fixed_latent=False
+    if options_w_robot:
+        n_targets = 16
+    else:    
+        n_targets = 4
+    use_wandb = True
+
+
+@train_hbc_ex.named_config
 def discrete_3targets_boxworld():
     env_name = "BoxWorld-v0"
     n_targets = 3

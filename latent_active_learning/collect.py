@@ -109,60 +109,8 @@ def train_expert(env_name, kwargs, n_epoch=1e6):
         verbose=1,
         # batch_size = batch_size,
         # n_steps = rollout_buffer_size,
-        # ent_coef = 0.2,
+        ent_coef = 0.2,
         # learning_rate = 0.01
         )
     model.learn(total_timesteps=n_epoch, progress_bar=True)
     return model
-
-#     env_name = "BoxWorld-v0"
-#     n_epochs = 100
-#     use_wandb=True
-#     num_demos=100
-#     targets = [
-#         [ 1, 1 ],
-#         [ 7, 1 ],
-#         [ 4, 6 ],
-#         [ 5, 0 ],
-#         [ 7, 3 ],
-#         [ 6, 8 ],
-#     ]
-#     danger = [
-#         [ 1, 1 ],
-#     ]
-#     obstacles = [
-#         [ 2, 0 ],
-#         [ 8, 2 ],
-#         [ 7, 4 ],
-#         [ 3, 7 ],
-#         [ 4, 7 ],
-#         [ 6, 7 ],
-#         [ 0, 4 ],
-#         [ 0, 5 ],
-#         [ 1, 2 ],
-#         [ 1, 5 ],
-#         [ 1, 8 ],
-#         [ 2, 3 ],
-#         [ 2, 8 ],
-#         [ 3, 1 ],
-#         [ 3, 5 ],
-#         [ 3, 6 ],
-#         [ 4, 1 ],
-#         [ 4, 2 ],
-#         [ 4, 5 ],
-#         [ 4, 8 ],
-#         [ 5, 5 ],
-#         [ 5, 8 ],
-#         [ 6, 1 ],
-#         [ 6, 2 ],
-#         [ 6, 3 ],
-#         [ 7, 0 ],
-#         [ 7, 2 ],
-#         [ 7, 6 ],
-#         [ 7, 8 ],
-#         [ 8, 8 ],
-#         [ 9, 4 ],
-#         [ 9, 5 ],
-#     ]
-
-# vec_env.envs[3].unwrapped.danger_reward = -200

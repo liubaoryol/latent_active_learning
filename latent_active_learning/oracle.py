@@ -71,6 +71,7 @@ class Oracle:
         returns = [np.sum(tr.rews) for tr in self.expert_trajectories]
         obs_t_len = [len(tr.obs) for tr in self.expert_trajectories_test]
         returns_t = [np.sum(tr.rews) for tr in self.expert_trajectories_test]
+
         print("STATS TRAINING DATASET")
         print("Num trajectories: ", len(self.expert_trajectories))
         print("Avereage length: {}+/-{}".format(
@@ -90,6 +91,9 @@ class Oracle:
             np.mean(returns_t),
             np.std(returns_t)
         ))
+
+        return (np.mean(returns), np.std(returns)), (np.mean(returns_t), np.std(returns))
+
 
 @dataclasses.dataclass
 class CuriousPupil(ABC):
@@ -111,7 +115,7 @@ class CuriousPupil(ABC):
     def query_oracle(self, num_queries):
         raise NotImplementedError
 
-    def save_query(self, traj_num, idx_query):
+    def log_query(self, traj_num, idx_query):
         self.list_queries.append(QueryIdentifier(traj_num, idx_query))
 
     def __str__(self):
@@ -139,7 +143,7 @@ class Random(CuriousPupil):
             if np.random.uniform() <= self.query_percent:
                 option = self.oracle.query(idx, j)
                 demo.set_true_latent(j, option)
-                self.save_query(idx, j)
+                self.log_query(idx, j)
 
 @dataclasses.dataclass
 class QueryCapLimit(CuriousPupil):
@@ -161,7 +165,7 @@ class QueryCapLimit(CuriousPupil):
         for j in idxs:
             option = self.oracle.query(idx, j)
             demo.set_true_latent(j, option)
-            self.save_query(idx, j)
+            self.log_query(idx, j)
 
 
 @dataclasses.dataclass
@@ -185,7 +189,7 @@ class EfficientStudent(CuriousPupil):
             if option!=option_1:
                 demo.set_true_latent(j, option)
                 option_1=option
-                self.save_query(idx, j)
+                self.log_query(idx, j)
 
 
 @dataclasses.dataclass
@@ -210,7 +214,7 @@ class IterativeRandom(CuriousPupil):
             j = np.random.choice(unlabeled_idxs)
             option = self.oracle.query(idx, j)
             demo.set_true_latent(j, option)
-            self.save_query(idx, j)
+            self.log_query(idx, j)
         else:
             logging.warn("All latent states in demo have been queried")
 
@@ -244,7 +248,7 @@ class ActionEntropyBased(CuriousPupil):
             option = self.oracle.query(idx_traj, top_entropy_idx)
             demo = self.demos[idx_traj]
             demo.set_true_latent(top_entropy_idx, option)
-            self.save_query(idx_traj, top_entropy_idx)
+            self.log_query(idx_traj, top_entropy_idx)
             self._num_queries += 1
 
     def _get_info_single_demo(self, idx):
@@ -285,25 +289,38 @@ class IntentEntropyBased(CuriousPupil):
         
         top_entropies = []
         top_entropies_idx = []
+
+        # idx = idx_traj = np.random.randint(len(self.demos))
+        # ent_idx, ent = self._get_info_single_demo(idx)
+        # top_entropy_idx = ent_idx
+        # top_entropies.append(ent)
+        # top_entropies_idx.append(ent_idx)
         for idx in range(len(self.demos)):
             ent_idx, ent = self._get_info_single_demo(idx)
             top_entropies.append(ent)
             top_entropies_idx.append(ent_idx)
-        
-        idx_traj = np.argmax(top_entropies)
+            idx += 1
+
+        top_entropies = np.array(top_entropies)
+        top_entropy = (top_entropies).max()
+        idxs = np.where(top_entropies == top_entropy)[0]
+        idx_traj = np.random.choice(idxs)
         top_entropy_idx = top_entropies_idx[idx_traj]
+        # idx_traj = np.argmax(top_entropies)
+        # top_entropy_idx = top_entropies_idx[idx_traj]
         if top_entropy_idx is not None:
             option = self.oracle.query(idx_traj, top_entropy_idx)
             demo = self.demos[idx_traj]
             demo.set_true_latent(top_entropy_idx, option)
-            self.save_query(idx_traj, top_entropy_idx)
+            self.log_query(idx_traj, top_entropy_idx)
             self._num_queries += 1
 
     def _get_info_single_demo(self, idx):
         demo = self.demos[idx]
         entropy = demo.entropy()
-        top_entropy_idx = entropy[1:].argmax()
-        top_entropy = entropy[1+top_entropy_idx]
+        top_entropy = entropy[1:].max()
+        idxs = np.where(entropy == top_entropy)[0]
+        top_entropy_idx = np.random.choice(idxs) - 1
         return top_entropy_idx, top_entropy
 
 @dataclasses.dataclass
@@ -336,7 +353,7 @@ class ActionIntentEntropyBased(CuriousPupil):
             option = self.oracle.query(idx_traj, top_entropy_idx)
             demo = self.demos[idx_traj]
             demo.set_true_latent(top_entropy_idx, option)
-            self.save_query(idx_traj, top_entropy_idx)
+            self.log_query(idx_traj, top_entropy_idx)
             self._num_queries += 1
 
     def _get_info_single_demo(self, idx):

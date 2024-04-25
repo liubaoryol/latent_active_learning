@@ -1,14 +1,20 @@
-import shutil
 import os
 import wandb
 import gymnasium as gym
 from datetime import datetime
 from stable_baselines3.common.monitor import Monitor
+import numpy as np
+import torch
+import random
+
+import gym_custom
 
 from latent_active_learning.scripts.config.train_hbc import train_hbc_ex
 from latent_active_learning.scripts.utils import get_demos
 from latent_active_learning.collect import get_dir_name
 from latent_active_learning.wrappers.latent_wrapper import FilterLatent
+from latent_active_learning.wrappers.movers_wrapper import MoversAdapt
+from latent_active_learning.wrappers.movers_wrapper import MoversFullyObs
 from latent_active_learning.hbc import HBC
 from latent_active_learning.oracle import Oracle, Random, QueryCapLimit
 from latent_active_learning.oracle import IntentEntropyBased
@@ -23,19 +29,34 @@ timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
 def main(_config,
          env_name,
          n_targets,
-         filter_state_until,
-         kwargs,
-         use_wandb,
+         filter_state_until=None,
+         kwargs={},
+         use_wandb=False,
          student_type=None,
-         efficient_student=False,
          query_percent=None,
          query_cap=None,
          exp_identifier='',
-         n_epochs=None):
+         n_epochs=None,
+         movers_optimal=True,
+         options_w_robot=True,
+         state_w_robot_opts=False,
+         fixed_latent=True,
+         seed=0):
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    random.seed(seed)
+    
+    if env_name=='EnvMovers-v0':
+        path = 'EnvMovers{}{}{}{}'.format(
+            '-optimal' if movers_optimal else '',
+            '-options-include-robot' if options_w_robot else '',
+            '-state-include-robot' if state_w_robot_opts else '',
+            '-fixed-latent' if fixed_latent else ''
+            )
+    else:
+        path = get_dir_name(env_name, kwargs).split('/')[1]
 
-    path = get_dir_name(env_name, kwargs).split('/')[1]
     gini = Oracle.load('./expert_trajs/{}'.format(path))
-    rollouts = gini.expert_trajectories
 
     if use_wandb:
         run = wandb.init(
@@ -76,11 +97,18 @@ def main(_config,
     elif student_type=='action_intent_entropy':
         student = ActionIntentEntropyBased(gini, option_dim=n_targets)
 
-
-    env = gym.make(env_name, **kwargs)
-    env = Monitor(env)
-    env = FilterLatent(env, list(range(filter_state_until, 0)))
-    env.unwrapped._max_episode_steps = kwargs['size']**2 * n_targets
+    if env_name=="EnvMovers-v0":
+        env = gym.make(env_name)
+        env = Monitor(env)
+        if state_w_robot_opts:
+            env = MoversFullyObs(env)
+        else:
+            env = MoversAdapt(env)
+    else:
+        env = gym.make(env_name, **kwargs)
+        env = Monitor(env)
+        env = FilterLatent(env, list(range(filter_state_until, 0)))
+        env.unwrapped._max_episode_steps = kwargs['size']**2 * n_targets
 
     hbc = HBC(
         option_dim=n_targets,
@@ -95,11 +123,10 @@ def main(_config,
     if student_type in ['action_entropy', 'action_intent_entropy']:
         student.set_policy(hbc)
 
-
+    import pdb; pdb.set_trace()
     if n_epochs is None:
         delay_after_query_exhaustion = 50
         n_epochs = gini.max_queries + delay_after_query_exhaustion
-    
     hbc.train(n_epochs)
 
     # Log table with metrics

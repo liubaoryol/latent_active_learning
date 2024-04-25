@@ -20,7 +20,8 @@ from imitation.util import logger as imit_logger
 from latent_active_learning.data.types import TrajectoryWithLatent
 from latent_active_learning.wrappers.latent_wrapper import TransformBoxWorldReward
 from latent_active_learning.evaluate import Evaluator
-
+from latent_active_learning.wrappers.movers_wrapper import MoversAdapt
+from latent_active_learning.wrappers.movers_wrapper import MoversFullyObs
 
 CURR_DIR = os.getcwd()
 timestamp = lambda: datetime.now().strftime('%m-%d-%Y_%H-%M-%S')
@@ -129,7 +130,7 @@ class HBCLogger:
             })
 
     def log_rollout(self, env, model):
-        if self.wandb_run is None:
+        if self.wandb_run is None or isinstance(env, MoversAdapt) or isinstance(env, MoversFullyObs):
             return
 
         # Get visualizer
@@ -196,10 +197,13 @@ class HBC:
         self.curious_student = curious_student
         self.env = env
 
-        boxworld_params = f'size{env.size}-targets{env.n_targets}'
+        if isinstance(env, MoversAdapt) or isinstance(env, MoversFullyObs):
+            env_id = 'EnvMovers'
+        else:
+            env_id = f'size{env.size}-targets{env.n_targets}'
         logging_dir = os.path.join(
             CURR_DIR,
-            f'{results_dir}/{boxworld_params}/{exp_identifier}_{timestamp()}/'
+            f'{results_dir}/{env_id}/{exp_identifier}_{timestamp()}/'
             )
 
         new_logger = imit_logger.configure(logging_dir, ["stdout"])
@@ -249,6 +253,7 @@ class HBC:
             self.policy_hi.train(n_epochs=1)
 
             self.curious_student.query_oracle()
+            assert len(self.curious_student.list_queries)==len(set(self.curious_student.list_queries)), "Queries are repeated"
             # Save checkpoint every 100 iterations
             if not epoch % 100:
                 self.save(ckpt_num=epoch)
