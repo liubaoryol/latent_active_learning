@@ -4,9 +4,9 @@ import numpy as np
 import wandb
 import matplotlib.pyplot as plt
 import seaborn as sns
-from latent_active_learning.oracle import Oracle
 figure, axis = plt.subplots(2, 1)
 
+from latent_active_learning.oracle import Oracle
 
 entity = 'vinson-liuba-experiments'
 project = 'BoxWorld-size10-targets6'
@@ -26,14 +26,14 @@ for run in runs:
         if '.csv' in file.name:
             counter +=1
             print("Downloading", counter)
-            file.download()
+            # file.download()
             df = pd.read_csv(file.name)
             df['seed'] = run.config['seed']
             dataframes.append(df)
         if '.npy' in file.name:
             counter +=1
             print("Downloading", counter)
-            file.download()
+            # file.download()
             list_queries.append(np.load(file.name, allow_pickle=True))
             
 
@@ -84,7 +84,7 @@ def set_lineplot_ax(df, ax, metric='performance', legend=False, loc_legend='lowe
     else:
         ax.legend_.remove()
     ax.set_xlabel( "Iteration", size=12 )
-    ax.set_ylabel( "Performance", size=12)
+    ax.set_ylabel( metric, size=12)
 
 
 dashes = {alg: '' for alg in set(full_df['algorithm'])}
@@ -94,7 +94,7 @@ markers['expert'] = ','
 LINEPLOT_FLAVOR_BANDS = {
     'dashes': dashes,
     'markers': markers,
-    'err_kws': {'alpha': 0.05}#.15} # set saturation of bands
+    'err_kws': {'alpha': 0.0}#.15} # set saturation of bands
 }
 
 LINEPLOT_FLAVOR_BARS = {
@@ -112,11 +112,11 @@ full_df['rollout_mean'] = (metric - min(metric)) / (1961.7767333984375 - min(met
 metric='rollout_mean'
 
 def select_epochs_evently(full_df, num_epochs):
-    
-    epoch_selection = np.linspace(0, 649, num=num_epochs, dtype=int)
-    indexes = np.zeros(650, bool)
+    total_iterations = full_df['iteration'].iloc[-1]
+    epoch_selection = np.linspace(0, total_iterations, num=num_epochs, dtype=int)
+    indexes = np.zeros(total_iterations+1, bool)
     indexes[epoch_selection] = 1
-    indexes = np.concatenate([indexes]*30)
+    indexes = np.concatenate([indexes]*25)
     return full_df[indexes]
 
 
@@ -127,7 +127,7 @@ figure, axis = plt.subplots(1, 1)
 
 set_lineplot_ax(df, axis, metric=metric, legend=True, kwargs=LINEPLOT_FLAVOR_BANDS)
 
-sns.set_style('whitegrid')
-# sns.set_style('white')
+# sns.set_style('whitegrid')
+sns.set_style('white')
 sns.color_palette("Paired")
 plt.show()

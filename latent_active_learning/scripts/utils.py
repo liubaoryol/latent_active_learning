@@ -1,19 +1,18 @@
 import numpy as np
 import gymnasium as gym
-import gym_custom
 
-import imitation
-from aic_domain.box_push.maps import EXP1_MAP
-from aic_domain.box_push.mdp import BoxPushTeamMDP_AlwaysTogether
-from aic_domain.box_push.policy import BoxPushPolicyTeamExp1
-from aic_domain.box_push.agent import BoxPushAIAgent_Team1
+# import imitation
+# from aic_domain.box_push.maps import EXP1_MAP
+# from aic_domain.box_push.mdp import BoxPushTeamMDP_AlwaysTogether
+# from aic_domain.box_push.policy import BoxPushPolicyTeamExp1
+# from aic_domain.box_push.agent import BoxPushAIAgent_Team1
 
 from latent_active_learning.scripts.config.train_hbc import train_hbc_ex
 from latent_active_learning.collect import get_trajectories
 from latent_active_learning.collect import filter_TrajsWRewards
 from latent_active_learning.collect import get_expert
-from latent_active_learning.wrappers.movers_wrapper import MoversAdapt
-from latent_active_learning.wrappers.movers_wrapper import MoversFullyObs
+# from latent_active_learning.wrappers.movers_wrapper import MoversAdapt, MoversBoxWorldRepr
+# from latent_active_learning.wrappers.movers_wrapper import MoversFullyObs
 
 
 @train_hbc_ex.capture
@@ -54,7 +53,8 @@ def get_movers_demos(num_demos,
                      optimal_trj: bool,
                      opts_incl_robot: bool,
                      state_w_robot_opts:bool,
-                     fixed_latent: bool):
+                     fixed_latent: bool,
+                     box_repr: bool):
     rollouts = []
     options = []
     
@@ -66,7 +66,8 @@ def get_movers_demos(num_demos,
         while acc_rew < threshold:
             roll, opts, acc_rew = get_movers_one_demo(opts_incl_robot,
                                                       state_w_robot_opts,
-                                                      fixed_latent)
+                                                      fixed_latent,
+                                                      box_repr)
         rollouts.append(roll)
         options.append(opts)
 
@@ -74,7 +75,7 @@ def get_movers_demos(num_demos,
 
 
 OPTION_SEQ = [0,3,2,3,1,3]
-def get_movers_one_demo(opts_incl_robot: bool, state_w_robot_opts: bool, fixed_latent: bool):
+def get_movers_one_demo(opts_incl_robot: bool, state_w_robot_opts: bool, fixed_latent: bool, box_repr: bool):
     option_idx = 0
     assert not (opts_incl_robot and state_w_robot_opts), 'Robot options\
         can only be in either state, or options, but not both'
@@ -132,7 +133,7 @@ def get_movers_one_demo(opts_incl_robot: bool, state_w_robot_opts: bool, fixed_l
         if done:
             break
         state = next_state
-    return traj.get_traj(), expert.get_options(opts_incl_robot), acc_rew
+    return traj.get_traj(box_repr), expert.get_options(opts_incl_robot), acc_rew
 
 
 class MoversExpert():
@@ -217,9 +218,13 @@ class RolloutStorage():
         self.rews.append(r)
         self.done = d
 
-    def get_traj(self):
+    def get_traj(self, box_repr):
+        if box_repr:
+            obs = np.array(self.obs)[:, 3:]
+        else:
+            obs = np.array(self.obs)
         trj = imitation.data.types.TrajectoryWithRew(
-            obs = np.array(self.obs),
+            obs = obs,
             acts = np.array(self.acts),
             infos = None,
             terminal = self.done,

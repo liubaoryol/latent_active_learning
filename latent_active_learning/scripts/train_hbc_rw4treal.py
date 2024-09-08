@@ -62,9 +62,20 @@ def main(_config,
     np.random.seed(seed)
     torch.manual_seed(seed)
     random.seed(seed)
+
+    if env_name=="TeamBoxWorld-v0":
+        path ="/home/liubove/Documents/my-packages/rw4t-dataset/" \
+            "dataset/trajectories/discrete/gini_n18"
+        gini = Oracle.load(path)
+    elif env_name=="rw4t-continuous":
+        path ="/home/liubove/Documents/my-packages/rw4t-dataset/" \
+            "dataset/trajectories/continuous/gini_n18"
+        gini = Oracle.load(path)
+        raise NotImplementedError
+
     if use_wandb:
         run = wandb.init(
-            project=f'{exp_identifier}{path}',
+            project=f'{exp_identifier}rw4t-discrete',
             name='HBC_{}{}'.format(
                 student_type,
                 timestamp(),
@@ -76,20 +87,7 @@ def main(_config,
     else:
         run = None
 
-    if env_name=='EnvMovers-v0':
-        path = 'EnvMovers{}{}{}{}{}'.format(
-            '-optimal' if movers_optimal else '',
-            '-options-include-robot' if options_w_robot else '',
-            '-state-include-robot' if state_w_robot_opts else '',
-            '-fixed-latent' if fixed_latent else '',
-            '-box_repr' if box_repr else ''
-            )
-    else:
-        path = get_dir_name(env_name, kwargs).split('/')[1]
-
-    # Create Oracle
-    gini = Oracle.load('./expert_trajs/{}'.format(path))
-
+    n_targets += 1 # to account for no intent
     # Create student:
     if student_type=='random':
         student = Random(gini, option_dim=n_targets, query_percent=query_percent)
@@ -114,26 +112,15 @@ def main(_config,
     
     elif student_type=='action_intent_entropy':
         student = ActionIntentEntropyBased(gini, option_dim=n_targets)
-
-    # Create env to interact with?
-    if env_name=="EnvMovers-v0":
-        env = gym.make(env_name)
-        env = Monitor(env)
-        if state_w_robot_opts:
-            env = MoversFullyObs(env)
-        elif box_repr:
-            env = MoversBoxWorldRepr(env)
-        else:
-            env = MoversAdapt(env)
-    else:
-        env = gym.make(env_name, **kwargs)
-        env = Monitor(env)
-        env = FilterLatent(env, list(range(filter_state_until, 0)))
-        env.unwrapped._max_episode_steps = kwargs['size']**2 * n_targets
-
+    n_targets -=1
+    env = gym.make(env_name, **kwargs)
+    env = Monitor(env)
+    env = FilterLatent(env, list(range(filter_state_until, 0)))
+    env.unwrapped._max_episode_steps = kwargs['size']**2 * n_targets
+    n_targets +=1
     # Create algorithm with student (who has oracle), env
     hbc = HBC(
-        option_dim=n_targets,
+        option_dim=n_targets, # check how are the categories selected?
         device='cpu',
         env=env,
         exp_identifier=str(query_percent) + 'query_ratio',

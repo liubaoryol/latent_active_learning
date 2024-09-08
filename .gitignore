@@ -1,2 +1,6 @@
 results/
+wandb/
+checkpoints/
+baselines/
+csv_metrics/
 **/__pycache__/

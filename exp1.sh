@@ -1,0 +1,5 @@
+#!/bin/sh
+python latent_active_learning/scripts/train_hbc_rw4treal.py with rw4t_discrete_real student_type=intent_entropy
+python latent_active_learning/scripts/train_hbc_rw4treal.py with rw4t_discrete_real student_type=supervised
+python latent_active_learning/scripts/train_hbc_rw4treal.py with rw4t_discrete_real student_type=unsupervised
+python latent_active_learning/scripts/train_hbc_rw4treal.py with rw4t_discrete_real student_type=iterative_random

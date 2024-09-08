@@ -9,3 +9,8 @@ register(
     id="BoxWorld-continuous-v0",
     entry_point="latent_active_learning.envs:BoxWorldContinuousEnv",
 )
+
+register(
+    id="TeamBoxWorld-v0",
+    entry_point="latent_active_learning.envs:TeamBoxWorldEnv",
+)

@@ -23,7 +23,8 @@ def main(
     movers_optimal=False,
     options_w_robot=False,
     state_w_robot_opts=False,
-    fixed_latent=False
+    fixed_latent=False,
+    box_repr=False
 ):
     if env_name=='EnvMovers-v0':
         
@@ -31,19 +32,22 @@ def main(
                                              movers_optimal,
                                              options_w_robot,
                                              state_w_robot_opts,
-                                             fixed_latent
+                                             fixed_latent,
+                                             box_repr
                                              )
         rollouts_test, options_test = get_movers_demos(num_demos_test,
                                                        movers_optimal,
                                                        options_w_robot,
                                                        state_w_robot_opts,
-                                                       fixed_latent
+                                                       fixed_latent,
+                                                       box_repr
                                                        )
-        path = 'EnvMovers{}{}{}{}'.format(
+        path = 'EnvMovers{}{}{}{}{}'.format(
             '-optimal' if movers_optimal else '',
             '-options-include-robot' if options_w_robot else '',
             '-state-include-robot' if state_w_robot_opts else '',
-            '-fixed-latent' if fixed_latent else ''
+            '-fixed-latent' if fixed_latent else '',
+            '-box_repr' if box_repr else ''
             )
     else:
         rollouts, options = get_demos(num_demos=num_demos_train)

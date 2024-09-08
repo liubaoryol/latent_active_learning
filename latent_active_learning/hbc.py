@@ -20,7 +20,7 @@ from imitation.util import logger as imit_logger
 from latent_active_learning.data.types import TrajectoryWithLatent
 from latent_active_learning.wrappers.latent_wrapper import TransformBoxWorldReward
 from latent_active_learning.evaluate import Evaluator
-from latent_active_learning.wrappers.movers_wrapper import MoversAdapt
+from latent_active_learning.wrappers.movers_wrapper import MoversAdapt, MoversBoxWorldRepr
 from latent_active_learning.wrappers.movers_wrapper import MoversFullyObs
 
 CURR_DIR = os.getcwd()
@@ -130,7 +130,7 @@ class HBCLogger:
             })
 
     def log_rollout(self, env, model):
-        if self.wandb_run is None or isinstance(env, MoversAdapt) or isinstance(env, MoversFullyObs):
+        if self.wandb_run is None or isinstance(env, MoversAdapt) or isinstance(env, MoversBoxWorldRepr) or isinstance(env, MoversFullyObs):
             return
 
         # Get visualizer
@@ -199,6 +199,8 @@ class HBC:
 
         if isinstance(env, MoversAdapt) or isinstance(env, MoversFullyObs):
             env_id = 'EnvMovers'
+        elif isinstance(env, MoversBoxWorldRepr):
+            env_id = 'EnvMovers'
         else:
             env_id = f'size{env.size}-targets{env.n_targets}'
         logging_dir = os.path.join(
@@ -237,8 +239,6 @@ class HBC:
     def train(self, n_epochs):
 
         for epoch in range(n_epochs):
-            rr = [q.previous_estimated!=q.gt_latent_set for q in self.curious_student.list_queries]
-            print("-----DIFF-LATENT SET-----: ", sum(rr), '/', len(rr))
             self.evaluator.evaluate_and_log(
                 model=self,
                 student=self.curious_student,
@@ -259,6 +259,9 @@ class HBC:
             # Save checkpoint every 100 iterations
             if not epoch % 100:
                 self.save(ckpt_num=epoch)
+
+            rr = [q.previous_estimated!=q.gt_latent_set for q in self.curious_student.list_queries]
+            print("-----DIFF-LATENT SET-----: ", sum(rr), '/', len(rr), ". Percentage: ", sum(rr)/len(rr))
 
     def transitions(self, expert_demos):
         expert_lo = []
@@ -297,6 +300,9 @@ class HBC:
             n = len(observation)
             state = -np.ones(n)
         state[episode_start] = -1
+
+        if observation.dtype==object:
+            observation = observation.astype(float)
 
         hi_input = obs_as_tensor(np.concatenate([observation, state.reshape(-1, 1)], axis=1), device=self.device)
         state, _ = self.policy_hi.policy.predict(hi_input)

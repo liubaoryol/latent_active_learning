@@ -5,6 +5,66 @@ train_hbc_ex = sacred.Experiment("train_hbc", interactive=True)
 
 
 @train_hbc_ex.named_config
+def rw4t_discrete_real():
+    env_name = "TeamBoxWorld-v0"
+    n_targets = 6
+    n_epochs = None
+    use_wandb=True
+    filter_state_until = -1
+    kwargs = {
+        'size': 10,
+        'n_targets': n_targets,
+        'allow_variable_horizon': True,
+        'fixed_targets': [
+            [ 1, 1 ],
+            [ 7, 1 ],
+            [ 4, 6 ],
+            [ 5, 0 ],
+            [ 7, 3 ],
+            [ 6, 8 ],
+        ],
+        'danger': [
+            [ 2, 0 ],
+            [ 1, 1 ],
+            [ 8, 2 ],
+            [ 7, 4 ],
+            [ 3, 7 ],
+            [ 4, 7 ],
+            [ 6, 7 ],
+        ],
+        'obstacles': [
+            [ 0, 4 ],
+            [ 0, 5 ],
+            [ 1, 2 ],
+            [ 1, 5 ],
+            [ 1, 8 ],
+            [ 2, 3 ],
+            [ 2, 8 ],
+            [ 3, 1 ],
+            [ 3, 5 ],
+            [ 3, 6 ],
+            [ 4, 1 ],
+            [ 4, 2 ],
+            [ 4, 5 ],
+            [ 4, 8 ],
+            [ 5, 5 ],
+            [ 5, 8 ],
+            [ 6, 1 ],
+            [ 6, 2 ],
+            [ 6, 3 ],
+            [ 7, 0 ],
+            [ 7, 2 ],
+            [ 7, 6 ],
+            [ 7, 8 ],
+            [ 8, 8 ],
+            [ 9, 4 ],
+            [ 9, 5 ],
+        ],
+        'latent_distribution': None,
+        'render_mode': None
+        }
+
+@train_hbc_ex.named_config
 def rw4t_discrete():
     env_name = "BoxWorld-v0"
     n_targets = 6
@@ -87,10 +147,11 @@ def discrete_2targets_boxworld():
 def movers():
     env_name = "EnvMovers-v0"
     # fixed_latent=True
-    movers_optimal=False
-    options_w_robot=False
+    movers_optimal=True
+    options_w_robot=True
     state_w_robot_opts = False
     fixed_latent=False
+    box_repr = True
     if options_w_robot:
         n_targets = 16
     else:    
@@ -159,3 +220,7 @@ def rich_repr():
 @train_hbc_ex.named_config
 def simple_repr(n_targets):
     filter_state_until = -1 - n_targets
+
+@train_hbc_ex.named_config
+def franka_kitchen():
+    env_name = 'FrankaKitchen'
