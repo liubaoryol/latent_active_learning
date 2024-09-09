@@ -129,8 +129,8 @@ class HBCLogger:
                 "env/rollout_std": rollout_std
             })
 
-    def log_rollout(self, env, model):
-        if self.wandb_run is None or isinstance(env, MoversAdapt) or isinstance(env, MoversBoxWorldRepr) or isinstance(env, MoversFullyObs):
+    def log_rollout(self, env, model, env_id):
+        if self.wandb_run is None or  env_id== 'EnvMovers' or env_id=='FrankaKitchen-v1':
             return
 
         # Get visualizer
@@ -201,16 +201,19 @@ class HBC:
             env_id = 'EnvMovers'
         elif isinstance(env, MoversBoxWorldRepr):
             env_id = 'EnvMovers'
+        elif 'FrankaKitchen-v1' in str(env):
+            env_id = 'FrankaKitchen-v1'
         else:
             env_id = f'size{env.size}-targets{env.n_targets}'
         logging_dir = os.path.join(
             CURR_DIR,
             f'{results_dir}/{env_id}/{exp_identifier}_{timestamp()}/'
             )
-
+        self.env_id = env_id
         new_logger = imit_logger.configure(logging_dir, ["stdout"])
         student_type = self.curious_student.student_type
         self._logger = HBCLogger(new_logger, wandb_run, student_type)
+
 
         obs_space = env.observation_space
         new_lo = np.concatenate([obs_space.low, [0]])
@@ -221,6 +224,7 @@ class HBC:
             observation_space=spaces.Box(low=new_lo, high=new_hi),
             action_space=env.action_space, # Check as sometimes it's continuosu
             rng=rng,
+            l2_weight=0.5,
             device=device
         )
         self.policy_lo._bc_logger = self._logger._logger_lo
@@ -229,6 +233,7 @@ class HBC:
             observation_space=spaces.Box(low=new_lo, high=new_hi),
             action_space=spaces.Discrete(option_dim),
             rng=rng,
+            l2_weight=0.5,
             device=device
         )
         self.policy_hi._bc_logger = self._logger._logger_hi
@@ -246,7 +251,7 @@ class HBC:
                 epoch=epoch)
 
             if not epoch % 1000:
-                self._logger.log_rollout(env=self.env, model=self)
+                self._logger.log_rollout(env=self.env, model=self, env_id=self.env_id)
 
             transitions_lo, transitions_hi = self.transitions(self.curious_student.demos)
             self.policy_lo.set_demonstrations(transitions_lo)
@@ -260,8 +265,8 @@ class HBC:
             if not epoch % 100:
                 self.save(ckpt_num=epoch)
 
-            rr = [q.previous_estimated!=q.gt_latent_set for q in self.curious_student.list_queries]
-            print("-----DIFF-LATENT SET-----: ", sum(rr), '/', len(rr), ". Percentage: ", sum(rr)/len(rr))
+            # rr = [q.previous_estimated!=q.gt_latent_set for q in self.curious_student.list_queries]
+            # print("-----DIFF-LATENT SET-----: ", sum(rr), '/', len(rr), ". Percentage: ", sum(rr)/len(rr))
 
     def transitions(self, expert_demos):
         expert_lo = []

@@ -4,6 +4,14 @@ import sacred
 train_hbc_ex = sacred.Experiment("train_hbc", interactive=True)
 
 
+
+@train_hbc_ex.named_config
+def franka_kitchen():
+    env_name = "FrankaKitchen-v1"
+    n_targets = 4
+    n_epochs = None
+    use_wandb=True
+
 @train_hbc_ex.named_config
 def rw4t_discrete_real():
     env_name = "TeamBoxWorld-v0"
@@ -220,7 +228,3 @@ def rich_repr():
 @train_hbc_ex.named_config
 def simple_repr(n_targets):
     filter_state_until = -1 - n_targets
-
-@train_hbc_ex.named_config
-def franka_kitchen():
-    env_name = 'FrankaKitchen'
