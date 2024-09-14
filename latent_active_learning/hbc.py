@@ -224,7 +224,7 @@ class HBC:
             observation_space=spaces.Box(low=new_lo, high=new_hi),
             action_space=env.action_space, # Check as sometimes it's continuosu
             rng=rng,
-            l2_weight=0.5,
+            # l2_weight=0.5,
             device=device
         )
         self.policy_lo._bc_logger = self._logger._logger_lo
@@ -233,7 +233,7 @@ class HBC:
             observation_space=spaces.Box(low=new_lo, high=new_hi),
             action_space=spaces.Discrete(option_dim),
             rng=rng,
-            l2_weight=0.5,
+            # l2_weight=0.5,
             device=device
         )
         self.policy_hi._bc_logger = self._logger._logger_hi

@@ -87,7 +87,6 @@ def main(_config,
     else:
         run = None
 
-    n_targets += 1 # to account for no intent
     # Create student:
     if student_type=='random':
         student = Random(gini, option_dim=n_targets, query_percent=query_percent)
@@ -112,12 +111,10 @@ def main(_config,
     
     elif student_type=='action_intent_entropy':
         student = ActionIntentEntropyBased(gini, option_dim=n_targets)
-    n_targets -=1
     env = gym.make(env_name, **kwargs)
     env = Monitor(env)
     env = FilterLatent(env, list(range(filter_state_until, 0)))
-    env.unwrapped._max_episode_steps = kwargs['size']**2 * n_targets
-    n_targets +=1
+    env.unwrapped._max_episode_steps = kwargs['size']**2 * n_targets//2
     # Create algorithm with student (who has oracle), env
     hbc = HBC(
         option_dim=n_targets, # check how are the categories selected?

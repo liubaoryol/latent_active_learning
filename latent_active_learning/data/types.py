@@ -26,6 +26,7 @@ class TrajectoryWithLatent(TrajectoryWithRew):
     The reward `rew[i]` at the i'th timestep is received after the
     agent has taken action `acts[i]`.
     """
+
     @classmethod
     def set_policy(cls, policy_lo, policy_hi):
         cls._policy_lo = policy_lo.policy
@@ -46,6 +47,7 @@ class TrajectoryWithLatent(TrajectoryWithRew):
                                ))
         object.__setattr__(self, '_latent', -np.ones(len(self.obs) + 1, dtype=int))
         object.__setattr__(self, '_N', len(self.obs))
+        object.__setattr__(self, '_device', 'cpu')
     
     @property
     def latent(self):
