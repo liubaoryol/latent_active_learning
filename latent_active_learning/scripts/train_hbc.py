@@ -39,8 +39,7 @@ def main(_config,
          options_w_robot=True,
          state_w_robot_opts=False,
          fixed_latent=True,
-         box_repr=True,
-         seed=0):
+         box_repr=True):
     """Hierarchical Behavior Cloning
     0. Set up wandb, seeds, path names
     1. Create Oracle and Student
@@ -58,13 +57,9 @@ def main(_config,
     3. Create HBC
     4. Train
     """
-    # Set up
-    np.random.seed(seed)
-    torch.manual_seed(seed)
-    random.seed(seed)
     if use_wandb:
         run = wandb.init(
-            project=f'{exp_identifier}{path}',
+            project=f'{exp_identifier}',
             name='HBC_{}{}'.format(
                 student_type,
                 timestamp(),
@@ -84,11 +79,42 @@ def main(_config,
             '-fixed-latent' if fixed_latent else '',
             '-box_repr' if box_repr else ''
             )
+        path = './expert_trajs/{}'.format(path)
+    elif env_name=='real':
+        path ="/home/liubove/Documents/my-packages/rw4t-dataset/" \
+            "dataset/trajectories/discrete/gini_n18-1090"
     else:
         path = get_dir_name(env_name, kwargs).split('/')[1]
+        path = './expert_trajs/{}'.format(path)
 
     # Create Oracle
-    gini = Oracle.load('./expert_trajs/{}'.format(path))
+    gini = Oracle.load(path)
+
+
+    if env_name=='real':
+        env_name='BoxWorld-v0'
+        filter_out = [0, 1, 2, 3, 4, 5, 6, 7]
+        # possibly need to clean up gini
+        for idx, expt in enumerate(gini.expert_trajectories):
+            obs = expt.obs[:, filter_out][np.insert(expt.acts<4, 0, True)]
+            acts = expt.acts[expt.acts<4]
+            rews = expt.rews[expt.acts<4]
+            gini.true_options[idx] = gini.true_options[idx][np.insert(expt.acts<4, 0, True)]
+            object.__setattr__(expt, 'obs', obs)
+            object.__setattr__(expt, 'acts', acts)
+            object.__setattr__(expt, 'rews', rews)
+        for idx, expt in enumerate(gini.expert_trajectories_test):
+            obs = expt.obs[:, filter_out][np.insert(expt.acts<4, 0, True)]
+            acts = expt.acts[expt.acts<4]
+            rews = expt.rews[expt.acts<4]
+            gini.true_options_test[idx] = gini.true_options_test[idx][np.insert(expt.acts<4, 0, True)]
+            object.__setattr__(expt, 'obs', obs)
+            object.__setattr__(expt, 'acts', acts)
+            object.__setattr__(expt, 'rews', rews)
+
+        filter_states = [2,3,4,5,6,7,8,9,10,11,12,13, -1]
+    else:
+        filter_states = list(range(filter_state_until, 0))
 
     # Create student:
     if student_type=='random':
@@ -128,9 +154,14 @@ def main(_config,
     else:
         env = gym.make(env_name, **kwargs)
         env = Monitor(env)
-        env = FilterLatent(env, list(range(filter_state_until, 0)))
-        env.unwrapped._max_episode_steps = kwargs['size']**2 * n_targets
+        env = FilterLatent(env, filter_states)
+        env.unwrapped._max_episode_steps = kwargs['size']**2 / 2
 
+
+    # Set up
+    # np.random.seed(seed)
+    # torch.manual_seed(seed)
+    # random.seed(seed)
     # Create algorithm with student (who has oracle), env
     hbc = HBC(
         option_dim=n_targets,
@@ -141,6 +172,7 @@ def main(_config,
         results_dir='results_fixed_order_targets',
         wandb_run=run
         )
+    hbc.load('/home/liubove/Downloads/checkpoint-epoch-final.tar')
 
     if student_type in ['action_entropy', 'action_intent_entropy']:
         student.set_policy(hbc)
@@ -149,7 +181,7 @@ def main(_config,
         delay_after_query_exhaustion = 50
         n_epochs = gini.max_queries + delay_after_query_exhaustion
     hbc.train(n_epochs)
-
+    hbc.save(ckpt_num='final')
     # Log table with metrics
     if run:
         run.log({"metrics/metrics": hbc._logger.metrics_table})

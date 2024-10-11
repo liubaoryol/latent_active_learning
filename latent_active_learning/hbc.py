@@ -6,7 +6,8 @@ from datetime import datetime
 from typing import Union, Tuple, Dict, Optional
 import numpy as np
 from gymnasium import spaces
-from stable_baselines3.common.monitor import Monitor
+import gymnasium as gym
+from gymnasium.wrappers import RecordVideo as Monitor
 from stable_baselines3.common.utils import obs_as_tensor
 from copy import deepcopy as copy
 import matplotlib.pyplot as plt
@@ -58,6 +59,7 @@ class HBCLogger:
         Args:
             logger: The logger to feed all the information to.
         """
+        self.tmp_counter = 0
         self.student_type = student_type
         self._logger = logger
         self._tensorboard_step = 0
@@ -77,7 +79,9 @@ class HBCLogger:
                 'hamming_train',
                 'hamming_test',
                 'rollout_mean',
-                'rollout_std'
+                'rollout_std',
+                'prob_true_action',
+                'prob_true_action_test',
             ])
         self._file_loc = {
             0: 'images/zero.png',
@@ -99,13 +103,17 @@ class HBCLogger:
         hamming_loss: int,
         hamming_loss_test: int,
         rollout_mean: int,
-        rollout_std: int
+        rollout_std: int,
+        prob_true_action: float,
+        prob_true_action_test: float
     ):
         self._logger.record("env/epoch", epoch_num)
         self._logger.record("env/hamming_loss_train", hamming_loss)
         self._logger.record("env/hamming_loss_test", hamming_loss_test)
         self._logger.record("env/rollout_mean", rollout_mean)
         self._logger.record("env/rollout_std", rollout_std)
+        self._logger.record("env/prob_true_action", prob_true_action)
+        self._logger.record("env/prob_true_action_test", prob_true_action_test)
 
         self._logger.dump(self._tensorboard_step)
         self._tensorboard_step += 1
@@ -117,7 +125,9 @@ class HBCLogger:
             hamming_loss,
             hamming_loss_test,
             rollout_mean,
-            rollout_std
+            rollout_std,
+            prob_true_action,
+            prob_true_action_test
             )
 
         if self.wandb_run is not None:
@@ -126,12 +136,14 @@ class HBCLogger:
                 "env/hamming_loss": hamming_loss,
                 "env/hamming_loss_test": hamming_loss_test,
                 "env/rollout_mean": rollout_mean,
-                "env/rollout_std": rollout_std
+                "env/rollout_std": rollout_std,
+                "env/prob_true_action": prob_true_action,
+                "env/prob_true_action_test": prob_true_action_test 
             })
 
     def log_rollout(self, env, model, env_id):
-        if self.wandb_run is None or  env_id== 'EnvMovers' or env_id=='FrankaKitchen-v1':
-            return
+        # if self.wandb_run is None or  env_id== 'EnvMovers' or env_id=='FrankaKitchen-v1':
+        #     return
 
         # Get visualizer
         viz_env = copy(env.unwrapped)
@@ -148,6 +160,11 @@ class HBCLogger:
         frames = []
         latents = []
         both = []
+
+        # For debugging purposes
+        tmp = [observations]
+        acts = []
+        lats_int = []
         # Get rollout
         while not done:
             actions, states = model.predict(
@@ -160,6 +177,9 @@ class HBCLogger:
             new_obs = viz_env.get_obs()[env.mask]
             episode_starts[0] = done
             observations = new_obs
+            tmp.append(observations)
+            acts.append(actions[0])
+            lats_int.append(states[0])
             latent_im = Image.open(os.path.join(
                     CURR_DIR,
                     f'latent_active_learning/{self._file_loc[states[0]]}'
@@ -172,10 +192,62 @@ class HBCLogger:
             frames.append(frame)
             latents.append(latent_im)
             both.append(np.concatenate([frame, latent_im], axis=2))
-        
-        print("LENGTH OF ROLLOUT IS", len(both))
-        self.wandb_run.log({"rollout/video": wandb.Video(np.stack(both), fps=4)})
+        acts.append(None)
+        lats_int.append(None)
+        base_path = os.path.join(CURR_DIR, 'rollouts')
+        path = os.path.join(base_path, f'{self.tmp_counter}.txt')
+        with open(path, 'w') as f:
+            for idx,line in enumerate(tmp):
+                f.write(f"{line}------>{acts[idx]} latent state{lats_int[idx]}\n")
+        self.tmp_counter +=1
+        if self.wandb_run is not None:
+            wandb.save(path, base_path=CURR_DIR)
+            print("LENGTH OF ROLLOUT IS", len(both))
+            self.wandb_run.log({"rollout/video": wandb.Video(np.stack(both), fps=1)})
 
+    def log_rollout_franka(self, env, model, env_id):
+        # if self.wandb_run is None or  env_id== 'EnvMovers' or env_id=='FrankaKitchen-v1':
+        #     return
+        # Get visualizer
+        viz_env = gym.make('FrankaKitchen-v1', 
+                   tasks_to_complete=[
+                       'microwave',
+                       'kettle',
+                       'light switch', 
+                       'slide cabinet'
+                       ],
+                    render_mode='rgb_array')
+        viz_env = Monitor(viz_env, 'videos')
+        # viz_env.unwrapped.render_mode = 'human'
+        # viz_env = TransformBoxWorldReward(viz_env)
+
+        # Set state, keep track of both rgb and obs for input of model        
+        frame = viz_env.reset()[0]['observation']
+        states = None
+        episode_starts = np.ones((1,), dtype=bool)
+        done = truncated = False
+        frames = []
+        counter = 0
+        # Get rollout
+        while not done and not truncated:
+            counter+=1
+            print(counter)
+            if counter >280:
+                break
+            actions, states = model.predict(
+                frame.reshape(1,-1),  # type: ignore[arg-type]
+                state=states,
+                episode_start=episode_starts,
+                deterministic=True,
+            )
+            frame, rew, done, truncated, _ = viz_env.step(actions[0])
+            frame = frame['observation']
+            episode_starts[0] = done
+
+            frames.append(frame)
+
+        self.tmp_counter +=1
+        viz_env.close()
     def __getstate__(self):
         state = self.__dict__.copy()
         del state["_logger"]
@@ -224,7 +296,10 @@ class HBC:
             observation_space=spaces.Box(low=new_lo, high=new_hi),
             action_space=env.action_space, # Check as sometimes it's continuosu
             rng=rng,
+            optimizer_kwargs={'lr':0.001},
+            batch_size=64,
             # l2_weight=0.5,
+            
             device=device
         )
         self.policy_lo._bc_logger = self._logger._logger_lo
@@ -233,7 +308,7 @@ class HBC:
             observation_space=spaces.Box(low=new_lo, high=new_hi),
             action_space=spaces.Discrete(option_dim),
             rng=rng,
-            # l2_weight=0.5,
+            regularize_output=True,
             device=device
         )
         self.policy_hi._bc_logger = self._logger._logger_hi
@@ -250,19 +325,20 @@ class HBC:
                 oracle=self.curious_student.oracle,
                 epoch=epoch)
 
-            if not epoch % 1000:
-                self._logger.log_rollout(env=self.env, model=self, env_id=self.env_id)
+            if not epoch % 10:
+                self._logger.log_rollout_franka(env=self.env, model=self, env_id=self.env_id)
 
             transitions_lo, transitions_hi = self.transitions(self.curious_student.demos)
-            self.policy_lo.set_demonstrations(transitions_lo)
-            self.policy_lo.train(n_epochs=1)
+            # object.__setattr__(transitions_lo, 'obs', transitions_lo.obs[:,[0,1,9]])
             self.policy_hi.set_demonstrations(transitions_hi)
             self.policy_hi.train(n_epochs=1)
-
-            self.curious_student.query_oracle()
+            self.policy_lo.set_demonstrations(transitions_lo)
+            self.policy_lo.train(n_epochs=1)
+            for _ in range(1):
+                self.curious_student.query_oracle()
             # assert len(self.curious_student.list_queries)==len(set(self.curious_student.list_queries)), "Queries are repeated"
             # Save checkpoint every 100 iterations
-            if not epoch % 100:
+            if not epoch % 500:
                 self.save(ckpt_num=epoch)
 
             # rr = [q.previous_estimated!=q.gt_latent_set for q in self.curious_student.list_queries]
@@ -273,12 +349,13 @@ class HBC:
         expert_hi = []
         for demo in expert_demos:
             opts = demo.latent
+            notwaits = (demo.acts!=4).all(1) # comment .all(1)
             expert_lo.append(imitation.data.types.TrajectoryWithRew(
-                obs = np.concatenate([demo.obs, opts[1:]], axis=1),
-                acts = demo.acts,
+                obs = np.concatenate([demo.obs, opts[1:]], axis=1)[np.concatenate([notwaits, [True]])],
+                acts = demo.acts[notwaits],
                 infos =  demo.infos,
                 terminal = demo.terminal,
-                rews = demo.rews
+                rews = demo.rews[notwaits]
             )
             )
             expert_hi.append(

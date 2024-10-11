@@ -93,7 +93,7 @@ class TeamBoxWorldEnv(gym.Env):
         self.obstacle_reward = -1
         self.target_reward = 1000
         
-        self.robot_pickup_param = 0.7
+        self.robot_pickup_param = 1
 
     @property
     def danger(self):
@@ -212,14 +212,14 @@ class TeamBoxWorldEnv(gym.Env):
 
         # Choose the agent's location uniformly at random
         agent_location_list = np.asarray([
-            [9, 0],
-            [9, 8],
+            [0, 9],
+            [8, 9],
             [2, 2],
             [4, 4]])
         agent_location = agent_location_list[np.random.randint(4)]
         # agent_location = self.np_random.integers(0, self.size, size=2) # random init
-        while self._is_occupied(agent_location):
-            agent_location = self.np_random.integers(0, self.size, size=2)
+        # while self._is_occupied(agent_location):
+        #     agent_location = self.np_random.integers(0, self.size, size=2)
 
         self.occupied_grids[0] = agent_location
 
@@ -273,7 +273,8 @@ class TeamBoxWorldEnv(gym.Env):
                             if len(self._visited_goals)!=self.n_targets:
                                 self._curr_goal = self.sample_next_goal()
                 else:
-                    self._robot_goal = int(direction[-1])
+                    if self._robot_goal==-1:
+                        self._robot_goal = int(direction[-1])
                     
             else:  # direction is up, left, right, down
                 # We use `np.clip` to make sure we don't leave the grid

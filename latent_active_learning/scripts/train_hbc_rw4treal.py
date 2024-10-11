@@ -14,6 +14,7 @@ from latent_active_learning.wrappers.latent_wrapper import FilterLatent
 from latent_active_learning.wrappers.movers_wrapper import MoversAdapt, MoversBoxWorldRepr
 from latent_active_learning.wrappers.movers_wrapper import MoversFullyObs
 from latent_active_learning.hbc import HBC
+# from latent_active_learning.hbc_v2 import HBCv2
 from latent_active_learning.oracle import Oracle, Random, QueryCapLimit
 from latent_active_learning.oracle import IntentEntropyBased
 from latent_active_learning.oracle import ActionEntropyBased
@@ -67,6 +68,14 @@ def main(_config,
         path ="/home/liubove/Documents/my-packages/rw4t-dataset/" \
             "dataset/trajectories/discrete/gini_n18"
         gini = Oracle.load(path)
+
+        # possibly need to clean up gini
+        for expts in [gini.expert_trajectories, gini.expert_trajectories_test]:
+            for expt in expts:
+                filter_out = [0,1, 10]
+                obs = expt.obs[:, filter_out]
+                object.__setattr__(expt, 'obs', obs)
+
     elif env_name=="rw4t-continuous":
         path ="/home/liubove/Documents/my-packages/rw4t-dataset/" \
             "dataset/trajectories/continuous/gini_n18"
@@ -111,10 +120,14 @@ def main(_config,
     
     elif student_type=='action_intent_entropy':
         student = ActionIntentEntropyBased(gini, option_dim=n_targets)
+
     env = gym.make(env_name, **kwargs)
     env = Monitor(env)
-    env = FilterLatent(env, list(range(filter_state_until, 0)))
-    env.unwrapped._max_episode_steps = kwargs['size']**2 * n_targets//2
+    # filtered = list(range(filter_state_until, 0))
+    filtered = [2,3,4,5,6,7,8, 9, 11]
+    
+    env = FilterLatent(env, filtered)
+    env.unwrapped._max_episode_steps = kwargs['size']**2 /2
     # Create algorithm with student (who has oracle), env
     hbc = HBC(
         option_dim=n_targets, # check how are the categories selected?

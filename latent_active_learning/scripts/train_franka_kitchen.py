@@ -2,7 +2,7 @@ import os
 import wandb
 import gymnasium as gym
 from datetime import datetime
-from stable_baselines3.common.monitor import Monitor
+# from gymnasium.wrappers import Monitor
 import numpy as np
 import torch
 import random
@@ -67,39 +67,74 @@ def main(_config,
             "latent_active_learning/expert_trajs/FrankaKitchen-v0-mixed_260_array_train.pkl"
         path_test ="/home/liubove/Documents/my-packages/" \
             "latent_active_learning/expert_trajs/FrankaKitchen-v0-mixed_260_array_test.pkl"
-        
-        trajs = np.load(path_train, allow_pickle=True)
+        import minari 
+        from imitation.data.types import TrajectoryWithRew
+
         expert_trajs = []
         true_options = []
-        for st, acts, rews, dones, latents in trajs:
-            trj = imitation.data.types.TrajectoryWithRew(
-                obs = st,
+        dataset = minari.load_dataset('D4RL/kitchen/complete-v2', download=True)
+        
+        for episode in dataset:
+            obj_state = episode.observations['achieved_goal']
+            obj_goal = episode.observations['desired_goal']
+            arg1 = np.linalg.norm(obj_state['microwave'] - obj_goal['microwave'], axis=1).argmin()
+            arg2 = np.ceil(np.linalg.norm(obj_state['kettle'] - obj_goal['kettle'], axis=1)*100).argmin()
+            arg3 = np.ceil(np.linalg.norm(obj_state['light switch'] - obj_goal['light switch'], axis=1)*100).argmin()
+
+            obs = episode.observations['observation'][:arg1]
+            acts = episode.actions[:arg1-1]
+            rews = episode.rewards[:arg1-1]
+            trj = TrajectoryWithRew(
+                obs = obs,
                 acts = acts,
                 infos = None,
-                terminal = dones[-1],
-                rews = rews[:-1]
+                terminal = True,
+                rews = rews
             )
             expert_trajs.append(trj)
-            true_options.append(latents)
 
-        expert_trajs_test = []
-        true_options_test = []
-        trajs = np.load(path_test, allow_pickle=True)
-        for st, acts, rews, dones, latents in trajs:
-            trj = imitation.data.types.TrajectoryWithRew(
-                obs = st,
-                acts = acts,
-                infos = None,
-                terminal = dones[-1],
-                rews = rews[:-1]
-            )
-            expert_trajs_test.append(trj)
-            true_options_test.append(latents)
+            opts = np.zeros(len(rews) + 1)
+            opts[arg1:arg2] = 1
+            opts[arg2:arg3] = 2
+            opts[arg3:] = 3
+            true_options.append(opts[:arg1])
+
+
+        # trajs = np.load(path_train, allow_pickle=True)
+        # expert_trajs = []
+        # true_options = []
+        # for st, acts, rews, dones, latents in trajs:
+        #     trj = imitation.data.types.TrajectoryWithRew(
+        #         obs = st,
+        #         acts = acts,
+        #         infos = None,
+        #         terminal = dones[-1],
+        #         rews = rews[:-1]
+        #     )
+        #     expert_trajs.append(trj)
+        #     latents[latents==4] = 3
+        #     true_options.append(latents)
+
+
+        # expert_trajs_test = []
+        # true_options_test = []
+        # trajs = np.load(path_test, allow_pickle=True)
+        # for st, acts, rews, dones, latents in trajs:
+        #     trj = imitation.data.types.TrajectoryWithRew(
+        #         obs = st,
+        #         acts = acts,
+        #         infos = None,
+        #         terminal = dones[-1],
+        #         rews = rews[:-1]
+        #     )
+        #     expert_trajs_test.append(trj)
+        #     latents[latents==4] = 3
+        #     true_options_test.append(latents)
         gini = Oracle(
-            expert_trajectories=expert_trajs,
-            true_options=true_options,
-            expert_trajectories_test=expert_trajs_test,
-            true_options_test=true_options_test
+            expert_trajectories=expert_trajs[:15],
+            true_options=true_options[:15],
+            expert_trajectories_test=expert_trajs[15:],
+            true_options_test=true_options[15:]
         )
 
     if use_wandb:
@@ -111,7 +146,8 @@ def main(_config,
             ),
             tags=['hbc'],
             config=_config,
-            save_code=True
+            save_code=True,
+            monitor_gym=True
         )
     else:
         run = None
@@ -142,11 +178,12 @@ def main(_config,
         
     env = gym.make(env_name, 
                    tasks_to_complete=[
-                       'light switch', 
-                       'slide cabinet',
                        'microwave',
-                       'kettle'])
-    env = Monitor(env)
+                    #    'kettle',
+                    #    'light switch', 
+                    #    'slide cabinet'
+                       ])
+    # env = Monitor(env)
     env = ObservationOnly(env)
     # Create algorithm with student (who has oracle), env
     hbc = HBC(
@@ -171,7 +208,7 @@ def main(_config,
     if run:
         run.log({"metrics/metrics": hbc._logger.metrics_table})
         table = hbc._logger.metrics_table.get_dataframe()
-        base_path = os.path.join(os.getcwd(), f'csv_metrics/{path}/')
+        base_path = os.path.join(os.getcwd(), f'csv_metrics/')
         if not os.path.exists(base_path):
             os.makedirs(base_path)
         file_name = f'{base_path}hbc_{student_type}{timestamp()}.csv'

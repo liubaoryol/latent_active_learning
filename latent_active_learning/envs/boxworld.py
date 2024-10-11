@@ -9,7 +9,7 @@ class BoxWorldEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
 
     def __init__(self, render_mode=None, size=5, n_targets=1,
-                 latent_distribution=np.random.randint,
+                 latent_distribution=None,
                  allow_variable_horizon=True,
                  fixed_targets=None,
                  obstacles=None,
@@ -74,9 +74,10 @@ class BoxWorldEnv(gym.Env):
         self.window = None
         self.clock = None
 
-        self.danger_reward = -100
-        self.obstacle_reward = -1
-        self.target_reward = 1000
+        self.danger_reward = -10
+        self.obstacle_reward = -10
+        self.target_reward = 100
+        self.time_cost = -10
 
     @property
     def danger(self):
@@ -218,7 +219,7 @@ class BoxWorldEnv(gym.Env):
             if len(self._visited_goals) == self.n_targets:
                 raise ValueError("All targets have been visited. Call `reset()` function")
 
-            reward = -1
+            reward = self.time_cost
             # Map the action (element of {0,1,2,3}) to the direction we walk in
             direction = self._action_to_direction[action]
             # We use `np.clip` to make sure we don't leave the grid
@@ -226,19 +227,34 @@ class BoxWorldEnv(gym.Env):
             agent_location, reward = self.move_agent(agent_location, direction)
             self.occupied_grids[0] = agent_location
 
-            curr_target = self.occupied_grids[self._curr_goal + 1]
-            # An episode is done iff the agent has reached the target
-            if self.target_achieved(agent_location, curr_target):
-                self._visited_goals.append(self._curr_goal)
-                reward = self.target_reward
-                if len(self._visited_goals) == self.n_targets:
-                    if self.allow_variable_horizon:
-                        terminated = True
+            if self._curr_goal is None:
+                targets = self.occupied_grids[1:]
+        
+                idx = np.where((agent_location ==targets).all(1))[0]
+                if len(idx) > 0:
+                    idx = idx[0]
+                    if idx not in self._visited_goals:
+                        self._visited_goals.append(idx)
+                        reward += self.target_reward
+                        if len(self._visited_goals) == self.n_targets:
+                            if self.allow_variable_horizon:
+                                terminated = True
+                            else:
+                                self.at_absorb_state = True
+            else:
+                curr_target = self.occupied_grids[self._curr_goal + 1]
+                # An episode is done iff the agent has reached the target
+                if self.target_achieved(agent_location, curr_target):
+                    self._visited_goals.append(self._curr_goal)
+                    reward += self.target_reward
+                    if len(self._visited_goals) == self.n_targets:
+                        if self.allow_variable_horizon:
+                            terminated = True
+                        else:
+                            self.at_absorb_state = True
                     else:
-                        self.at_absorb_state = True
-                else:
-                    self._curr_goal = self.sample_next_goal()
-            elif self._in_danger(agent_location):
+                        self._curr_goal = self.sample_next_goal()
+            if self._in_danger(agent_location):
                 reward = self.danger_reward
         
         if self._elapsed_steps >= self._max_episode_steps:
@@ -278,6 +294,8 @@ class BoxWorldEnv(gym.Env):
         return np.concatenate([agent_location, obs[2:]])
 
     def sample_next_goal(self):
+        if self.latent_distribution is None:
+            return None
         targets = list(range(self.n_targets))
         for visited in self._visited_goals:
             targets.remove(visited)

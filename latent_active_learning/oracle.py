@@ -16,8 +16,8 @@ from .data.utils import augmentTrajectoryWithLatent
 class QueryIdentifier:
     traj_num: int
     idx_query: int
-    previous_estimated: int
-    gt_latent_set: int
+    # previous_estimated: int
+    # gt_latent_set: int
 
 @dataclasses.dataclass
 class Oracle:
@@ -119,11 +119,13 @@ class CuriousPupil(ABC):
 
     def log_query(self, traj_num, idx_query):
         demo = self.demos[traj_num]
-        prev_latent = demo.latent[idx_query].item()
+        # prev_latent = demo.latent[idx_query].item()
         option = self.oracle.query(traj_num, idx_query)
         demo.set_true_latent(idx_query, option)
-        self.list_queries.append(QueryIdentifier(traj_num, idx_query,
-                                                 prev_latent, option))
+        # self.list_queries.append(QueryIdentifier(traj_num, idx_query,
+        #                                          prev_latent, option))
+        self.list_queries.append(QueryIdentifier(traj_num, idx_query))
+                                                #  option, option))
 
     def __str__(self):
         return f'Student(num_demos={len(self.demos)}, option_dim={self.option_dim})'
@@ -170,6 +172,10 @@ class QueryCapLimit(CuriousPupil):
         for j in idxs:
             self.log_query(idx, j)
 
+@dataclasses.dataclass
+class GradientBasedStudent(CuriousPupil):
+    student_type: str = 'gradient'
+    
 
 @dataclasses.dataclass
 class EfficientStudent(CuriousPupil):

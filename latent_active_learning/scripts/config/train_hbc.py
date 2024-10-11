@@ -24,12 +24,12 @@ def rw4t_discrete_real():
         'n_targets': n_targets,
         'allow_variable_horizon': True,
         'fixed_targets': [
-            [ 1, 1 ],
-            [ 7, 1 ],
-            [ 4, 6 ],
-            [ 5, 0 ],
-            [ 7, 3 ],
-            [ 6, 8 ],
+            [5, 0],
+            [1, 1],
+            [7, 1],
+            [7, 3],
+            [4, 6],
+            [6, 8]
         ],
         'danger': [
             [ 2, 0 ],
@@ -73,6 +73,11 @@ def rw4t_discrete_real():
         }
 
 @train_hbc_ex.named_config
+def human_dataset():
+    exp_identifier='real10-90-regularized'
+    env_name='real'
+
+@train_hbc_ex.named_config
 def rw4t_discrete():
     env_name = "BoxWorld-v0"
     n_targets = 6
@@ -84,12 +89,12 @@ def rw4t_discrete():
         'n_targets': n_targets,
         'allow_variable_horizon': True,
         'fixed_targets': [
+            [ 5, 0 ],
             [ 1, 1 ],
             [ 7, 1 ],
-            [ 4, 6 ],
-            [ 5, 0 ],
             [ 7, 3 ],
-            [ 6, 8 ],
+            [ 4, 6 ],
+            [ 6, 8 ]
         ],
         'danger': [
             [ 2, 0 ],
@@ -128,7 +133,7 @@ def rw4t_discrete():
             [ 9, 4 ],
             [ 9, 5 ],
         ],
-        'latent_distribution': lambda x: 0,
+        # 'latent_distribution': lambda x: 0,
         'render_mode': None
         }
 

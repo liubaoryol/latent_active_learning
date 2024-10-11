@@ -46,6 +46,5 @@ class ObservationOnly(gym.ObservationWrapper, gym.utils.RecordConstructorArgs):
         Returns:
             The transformed observation
         """
-
         return observation['observation']
 
